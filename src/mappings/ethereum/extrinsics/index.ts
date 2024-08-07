@@ -1,0 +1,1 @@
+export { handlePrecompileTransaction } from './transact' 

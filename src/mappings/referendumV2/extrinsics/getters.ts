@@ -1,9 +1,16 @@
 import { IsNull } from 'typeorm'
 import { TooManyOpenVotes, UnknownVersionError } from '../../../common/errors'
 import { ConvictionVote, VotingDelegation } from '../../../model'
-import { ConvictionVotingDelegateCall, ConvictionVotingRemoveOtherVoteCall, ConvictionVotingRemoveVoteCall, ConvictionVotingUndelegateCall, ConvictionVotingVoteCall } from '../../../types/calls'
-import { CallContext, CallHandlerContext } from '../../types/contexts'
-import { convictionToLockPeriod } from './helpers'
+// import { BatchContext } from '@subsquid/substrate-processor'
+import { Store } from '@subsquid/typeorm-store'
+import { vote, 
+    removeOtherVote, 
+    removeVote,
+    delegate,
+    undelegate,
+ } from '../../../types/conviction-voting/calls' 
+import { convictionToLockPeriod } from './utils'
+import { ProcessorContext } from '../../../processor'
 
 type DemocracyVote =
     | {
@@ -29,67 +36,42 @@ interface DemocracyVoteCallData {
     vote: DemocracyVote
 }
 
-export function getVoteData(ctx: CallContext): DemocracyVoteCallData {
-    const event = new ConvictionVotingVoteCall(ctx)
-    if (event.isV9320) {
-        const { pollIndex, vote } = event.asV9320
-        if(vote.__kind === 'Standard') {
+export function getVoteData(ctx: ProcessorContext<Store>, itemCall: any): DemocracyVoteCallData {
+    if (vote.v2403.is(itemCall)) {
+        const { pollIndex, vote: voteData } = vote.v2403.decode(itemCall)
+        if(voteData.__kind === 'Standard') {
             return {
                 index: pollIndex,
                 vote: {
                     type: 'Standard',
-                    balance: vote.balance,
-                    value: vote.vote
+                    balance: voteData.balance,
+                    value: voteData.vote
                 },
             }
         }
-         else {
+         else if(voteData.__kind === 'Split') {
             return {
                 index: pollIndex,
                 vote: {
                     type: 'Split',
-                    aye: vote.aye,
-                    nay: vote.nay,
+                    aye: voteData.aye,
+                    nay: voteData.nay,
                 },
             }
-        }
-    }
-    else if(event.isV9340){
-        const { pollIndex, vote } = event.asV9340
-        if (vote.__kind === 'Standard') {
-            return {
-                index: pollIndex,
-                vote: {
-                    type: 'Standard',
-                    balance: vote.balance,
-                    value: vote.vote
-                },
-            }
-        }
-        else if (vote.__kind === 'Split') {
-            return {
-                index: pollIndex,
-                vote: {
-                    type: 'Split',
-                    aye: vote.aye,
-                    nay: vote.nay,
-                },
-            }
-        }
-        else{
+        }else {
             return {
                 index: pollIndex,
                 vote: {
                     type: 'SplitAbstain',
-                    aye: vote.aye,
-                    nay: vote.nay,
-                    abstain: vote.abstain,
+                    aye: voteData.aye,
+                    nay: voteData.nay,
+                    abstain: voteData.abstain,
                 },
             }
         }
-    }  
+    }
     else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemCall.name)
     }
 }
 
@@ -100,36 +82,36 @@ export interface ConvictionVoteDelegateCallData {
     balance?: bigint
 }
 
-export function getDelegateData(ctx: CallContext): ConvictionVoteDelegateCallData {
-    const event = new ConvictionVotingDelegateCall(ctx)
+export function getDelegateData(ctx: ProcessorContext<Store>, itemCall: any): ConvictionVoteDelegateCallData {
+    // const event = new ConvictionVotingDelegateCall(ctx, itemCall)
    
-    if (event.isV9320) {
+    if (delegate.v2403.is(itemCall)) {
         //{ class, to, conviction, balance}
-        const eventData = event.asV9320
+        const eventData = delegate.v2403.decode(itemCall)
         return {
             track: eventData.class,
-            to: eventData.to.value,
+            to: eventData.to,
             lockPeriod:convictionToLockPeriod(eventData.conviction.__kind),
             balance: eventData.balance
         }
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemCall.name)
     }
 }
 export interface ConvictionVoteUndelegateCallData {
     track: number
 }
 
-export function getUndelegateData(ctx: CallContext): ConvictionVoteUndelegateCallData {
-    const event = new ConvictionVotingUndelegateCall(ctx)
+export function getUndelegateData(ctx: ProcessorContext<Store>, itemCall: any): ConvictionVoteUndelegateCallData {
+    // const event = new ConvictionVotingUndelegateCall(ctx, itemCall)
    
-    if (event.isV9320) {
-        const eventData = event.asV9320
+    if (undelegate.v2403.is(itemCall)) {
+        const eventData = undelegate.v2403.decode(itemCall)
         return {
             track: eventData.class
         }
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemCall.name)
     }
 }
 
@@ -138,35 +120,35 @@ export interface ConvictionVotingRemoveVoteCallData {
     track: number | undefined
 }
 
-export function getRemoveVoteData(ctx: CallContext): ConvictionVotingRemoveVoteCallData {
-    const event = new ConvictionVotingRemoveVoteCall(ctx)
-    if (event.isV9320) {
-        const eventData = event.asV9320
+export function getRemoveVoteData(ctx: ProcessorContext<Store>, itemCall: any): ConvictionVotingRemoveVoteCallData {
+    // const event = new ConvictionVotingRemoveVoteCall(ctx, itemCall)
+    if (removeVote.v2403.is(itemCall)) {
+        const eventData = removeVote.v2403.decode(itemCall)
         return {
             index: eventData.index,
             track: eventData.class
         }
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemCall.name)
     }
 }
 
 export interface ConvictionVotingRemoveOtherVoteCallData {
     index: number
     track: number | undefined
-    target: Uint8Array | null
+    target: string | null
 }
 
-export function getRemoveOtherVoteData(ctx: CallContext): ConvictionVotingRemoveOtherVoteCallData {
-    const event = new ConvictionVotingRemoveOtherVoteCall(ctx)
-    if (event.isV9320) {
-        const eventData = event.asV9320
+export function getRemoveOtherVoteData(ctx: ProcessorContext<Store>, itemCall: any): ConvictionVotingRemoveOtherVoteCallData {
+    // const event = new ConvictionVotingRemoveOtherVoteCall(ctx, itemCall)
+    if (removeOtherVote.v2403.is(itemCall)) {
+        const eventData = removeOtherVote.v2403.decode(itemCall)
         return {
             index: eventData.index,
             track: eventData.class,
-            target: eventData.target.value
+            target: eventData.target
         }
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemCall.name)
     }
 }

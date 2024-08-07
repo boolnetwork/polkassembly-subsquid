@@ -1,10 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as ss58 from '@subsquid/ss58'
 import { Chain } from '@subsquid/substrate-processor/lib/chain'
-import { Parser } from './parser'
-import { Codec } from '@subsquid/scale-codec'
+// import { Parser } from './parser'
+// import { Codec } from '@subsquid/scale-codec'
+import { Parser } from '@subsquid/substrate-data'
+import { Codec } from '@subsquid/ss58'
 import config from '../config'
 import { decodeHex } from '@subsquid/util-internal-hex'
+import { toHex } from '@subsquid/substrate-processor'
 
 export const ss58codec = ss58.codec(config.chain.prefix)
 
@@ -21,9 +24,10 @@ export function parseProposalCall(chain: Chain, data: Call) {
 
     const description = ((chain as any).calls.get(name).docs as string[]).join('\n')
 
-    const codec = (chain as any).scaleCodec as Codec
+    // const codec = (chain as any).scaleCodec as Codec
 
-    const args = new Parser((codec as any).types).parse(chain.description.call, data)
+    // const args = new Parser((codec as any).types).parse(chain.description.call, data)
+    const args = null;
 
     return {
         section,
@@ -42,13 +46,13 @@ export function getOriginAccountId(origin: any) {
             switch (origin.value.__kind) {
                 case 'Signed':
                     try {
-                        return ss58codec.encode(decodeHex(origin.value.value))
+                        return toHex(decodeHex(origin.value.value))
                     }
                     catch (e) {
                         console.log('Unexpected error continuing to next try block', JSON.stringify(e)); 
                     }
                     try {
-                        return ss58codec.encode(decodeHex(origin.value.value.value))
+                        return toHex(decodeHex(origin.value.value.value))
                     }
                     catch(e){
                         return undefined
@@ -63,5 +67,5 @@ export function getOriginAccountId(origin: any) {
 }
 
 export function encodeId(id: string | Uint8Array) {
-    return ss58codec.encode(typeof id === 'string' ? decodeHex(id) : id)
+    return toHex(typeof id === 'string' ? decodeHex(id) : id)
 }

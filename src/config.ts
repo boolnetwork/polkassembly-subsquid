@@ -1,17 +1,17 @@
 import {lookupArchive} from "@subsquid/archive-registry"
-import { ProcessorConfig } from './common/processorConfig'
-import { Store } from '@subsquid/typeorm-store'
+// import { ProcessorConfig } from './common/processorConfig'
+// import { Store } from '@subsquid/typeorm-store'
 
-const config: ProcessorConfig<Store> = {
+const config: any = {
     chain: {
-        name: 'kusama',
-        prefix: 'kusama',
+        name: 'moonbeam',
+        prefix: 42,
     },
     dataSource: {
-        archive: lookupArchive("kusama", {release: "FireSquid"}),
-        chain: 'wss://kusama.api.onfinality.io/public-ws',
+        archive: lookupArchive('moonbeam', {type: 'Substrate', release: 'ArrowSquid' }),
+        chain: 'wss://wss.api.moonbeam.network',
     },
-    typesBundle: 'kusama',
+    typesBundle: 'moonbeam',
     batchSize: 500,
     blockRange: {
         from: 0,

@@ -20,6 +20,7 @@ enum ProposalStatus {
   NotPassed
   Cancelled
   Executed
+  ExecutionFailed
   Used
   Invalid
   Missing
@@ -53,12 +54,16 @@ type Preimage @entity {
   id: ID!
   proposer: String
   hash: String! @index
+  deposit: BigInt
+  length: Int
   proposedCall: ProposedCall
   section: String
   method: String
   status: ProposalStatus!
+  statusHistory: [StatusHistory!] @derivedFrom(field: "preimage")
   createdAtBlock: Int! @index
   createdAt: DateTime! @index
+  extrinsicIndex: String
   updatedAtBlock: Int
   updatedAt: DateTime
 }
@@ -102,11 +107,11 @@ type Proposal @entity {
   voting: [Vote!] @derivedFrom(field: "proposal")
   convictionVoting: [ConvictionVote!] @derivedFrom(field: "proposal")
   preimage: Preimage
-  preimageV2: PreimageV2
   status: ProposalStatus!
   statusHistory: [StatusHistory!] @derivedFrom(field: "proposal")
   trackNumber: Int
   origin: String
+  metadata: String
   enactmentAtBlock: Int
   enactmentAfterBlock: Int
   submittedAtBlock: Int
@@ -114,6 +119,8 @@ type Proposal @entity {
   decisionDeposit: DecisionDeposit
   deciding: Deciding
   tally: Tally
+  executeAtBlockNumber: Int
+  executedAt: DateTime
   group: ProposalGroup
   createdAtBlock: Int! @index
   createdAt: DateTime! @index
@@ -145,28 +152,13 @@ type Deciding {
   confirming: Int
 }
 
-
-type PreimageV2 @entity {
-  id: ID!
-  proposer: String! @index
-  deposit: BigInt
-  hash: String!
-  proposedCall: ProposedCall
-  section: String
-  status: ProposalStatus!
-  method: String
-  length: Int!
-  createdAtBlock: Int! @index
-  createdAt: DateTime! @index
-  updatedAtBlock: Int
-  updatedAt: DateTime
-}
-
 type StatusHistory @entity {
   id: ID!
-  proposal: Proposal!
+  proposal: Proposal
+  preimage: Preimage
   status: ProposalStatus!
   block: Int!
+  extrinsicIndex: String
   timestamp: DateTime!
 }
 
@@ -202,6 +194,7 @@ enum VoteType {
   Motion
   ReferendumV2
   Fellowship
+  DemocracyProposal
 }
 
 type Vote @entity {
@@ -214,6 +207,7 @@ type Vote @entity {
   decision: VoteDecision
   balance: VoteBalance
   lockPeriod: Int
+  extrinsicIndex: String
   type: VoteType
 }
 
@@ -223,6 +217,7 @@ type Tippers @entity {
   tipper: String
   value: BigInt
   proposal: Proposal!
+  extrinsicIndex: String
   createdAtBlock: Int! @index
   createdAt: DateTime! @index
 }
@@ -235,6 +230,7 @@ type ProposalGroup @entity {
   councilMotionIndex: Int @index
   democracyProposalIndex: Int @index
   referendumIndex: Int @index
+  referendumV2Index: Int @index
   techCommitteeProposalIndex: Int @index
   proposals: [Proposal] @derivedFrom(field: "group")
 }
@@ -249,12 +245,55 @@ type ConvictionVote @entity {
   removedAtBlock: Int @index
   createdAt: DateTime! @index
   removedAt: DateTime @index
-  decision: VoteDecision!
+  selfVotingPower: BigInt @index
+  delegatedVotingPower: BigInt @index
+  totalVotingPower: BigInt @index
+  decision: VoteDecision! @index
   balance: VoteBalance!
   lockPeriod: Int
-  delegatedTo: String 
-  isDelegated: Boolean
+  txnHash: String
+  extrinsicIndex: String
+  delegatedVotes: [ConvictionDelegatedVotes!] @derivedFrom(field: "delegatedTo")
   type: VoteType!
+}
+
+type ConvictionDelegatedVotes @entity {
+  id: ID!
+  voter: String @index
+  delegatedTo: ConvictionVote!
+  proposalIndex: Int! @index
+  createdAtBlock: Int! @index
+  removedAtBlock: Int @index
+  createdAt: DateTime! @index
+  removedAt: DateTime @index
+  votingPower: BigInt @index
+  decision: VoteDecision! @index
+  balance: VoteBalance!
+  lockPeriod: Int
+  type: VoteType!
+}
+
+type FlattenedConvictionVotes @entity {
+  id: ID!
+  voter: String @index
+  parentVote: ConvictionVote
+  isDelegated: Boolean
+  delegatedTo: String @index
+  proposalIndex: Int! @index
+  proposal: Proposal!
+  createdAtBlock: Int!
+  removedAtBlock: Int @index
+  createdAt: DateTime!
+  removedAt: DateTime
+  decision: VoteDecision! @index
+  balance: VoteBalance!
+  lockPeriod: Int
+  type: VoteType!
+}
+
+enum DelegationType {
+  OpenGov
+  Democracy
 }
 
 type VotingDelegation @entity {
@@ -264,8 +303,21 @@ type VotingDelegation @entity {
   balance: BigInt
   lockPeriod: Int!
   track: Int
+  type: DelegationType!
   createdAt: DateTime!
+  extrinsicIndex: String
   createdAtBlock: Int! @index
   endedAt: DateTime
   endedAtBlock: Int
+}
+
+type CurveData @entity {
+  id: ID!
+  block: Int! @index
+  proposal: Proposal!
+  index: Int! @index
+  extrinsicIndex: String
+  timestamp: DateTime! @index
+  approvalPercent: Float @index
+  supportPercent: Float @index
 }

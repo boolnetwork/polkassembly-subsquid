@@ -1,43 +1,46 @@
 import { toHex } from '@subsquid/substrate-processor'
-import { DemocracyProposedEvent } from '../../../types/events'
+import { proposed } from '../../../types/democracy/events'
 import { StorageNotExistsWarn, UnknownVersionError } from '../../../common/errors'
-import { EventContext } from '../../../types/support'
 import { ProposalStatus, ProposalType } from '../../../model'
 import { ss58codec } from '../../../common/tools'
-import { storage } from '../../../storage'
-import { EventHandlerContext } from '../../types/contexts'
+import { publicProps } from '../../../types/democracy/storage'
 import { createDemocracyProposal } from '../../utils/proposals'
+import { Store } from '@subsquid/typeorm-store'
+import { Block, Event, ProcessorContext } from '../../../processor'
+import { storage } from '../../../storage'
 
 interface DemocracyProposalEventData {
     index: number
     deposit: bigint
 }
 
-function getEventData(ctx: EventContext): DemocracyProposalEventData {
-    const event = new DemocracyProposedEvent(ctx)
-    if (event.isV1020) {
-        const [index, deposit] = event.asV1020
+function getEventData(ctx: ProcessorContext<Store>, itemEvent: Event): DemocracyProposalEventData {
+    if (proposed.v900.is(itemEvent)) {
+        const [index, deposit] = proposed.v900.decode(itemEvent)
         return {
             index,
             deposit,
         }
-    } else if (event.isV9130) {
-        const { proposalIndex: index, deposit } = event.asV9130
+    } else if (proposed.v1201.is(itemEvent)) {
+        const { proposalIndex: index, deposit } = proposed.v1201.decode(itemEvent)
         return {
             index,
             deposit,
         }
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemEvent.name)
     }
 }
 
-export async function handleProposed(ctx: EventHandlerContext) {
-    const { index, deposit } = getEventData(ctx)
+export async function handleProposed(ctx: ProcessorContext<Store>,
+    item: Event,
+    header: Block) {
+    const { index, deposit } = getEventData(ctx, item)
+    const extrinsicIndex = `${header.height}-${item.index}`
 
-    const storageData = await storage.democracy.getProposals(ctx)
+    const storageData = await storage.democracy.getProposals(ctx, header)
     if (!storageData) {
-        ctx.log.warn(`Storage doesn't exist for democracy proposals at block ${ctx.block.height}`)
+        ctx.log.warn(`Storage doesn't exist for democracy proposals at block ${header.height}`)
         return
     }
 
@@ -47,13 +50,13 @@ export async function handleProposed(ctx: EventHandlerContext) {
         return
     }
     const { hash, proposer } = proposalData
-    const hexHash = toHex(hash)
 
-    await createDemocracyProposal(ctx, {
-        hash: hexHash,
+    await createDemocracyProposal(ctx, header, {
+        hash: hash,
         index,
-        proposer: ss58codec.encode(proposer),
+        proposer: proposer,
         status: ProposalStatus.Proposed,
         deposit,
+        extrinsicIndex,
     })
 }

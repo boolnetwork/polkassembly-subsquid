@@ -1,16 +1,16 @@
-import { toHex } from '@subsquid/substrate-processor'
-import { EventHandlerContext } from '../../types/contexts'
-import { ProposalStatus, ProposalType } from '../../../model'
-import { updateProposalStatus } from '../../utils/proposals'
-import { getClosedData } from './getters'
+// import { toHex } from '@subsquid/substrate-processor'
+// import { EventHandlerContext } from '../../types/contexts'
+// import { ProposalStatus, ProposalType } from '../../../model'
+// import { updateProposalStatus } from '../../utils/proposals'
+// import { getClosedData } from './getters'
 
-export async function handleClosed(ctx: EventHandlerContext) {
-    const hash = getClosedData(ctx)
+// export async function handleClosed(ctx: EventHandlerContext) {
+//     const hash = getClosedData(ctx)
 
-    const hexHash = toHex(hash)
+//     const hexHash = toHex(hash)
 
-    await updateProposalStatus(ctx, hexHash, ProposalType.TechCommitteeProposal, {
-        isEnded: true,
-        status: ProposalStatus.Closed,
-    })
-}
+//     await updateProposalStatus(ctx, hexHash, ProposalType.TechCommitteeProposal, {
+//         isEnded: true,
+//         status: ProposalStatus.Closed,
+//     })
+// }

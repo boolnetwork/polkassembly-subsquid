@@ -1,1 +1,1 @@
-export * from './proposalOf'
+// export * from './proposalOf'

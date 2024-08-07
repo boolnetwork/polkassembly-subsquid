@@ -1,4 +1,4 @@
-import { SubstrateProcessor } from '@subsquid/substrate-processor'
+// import { SubstrateProcessor } from '@subsquid/substrate-processor'
 
 type Parameters<T> = T extends (...args: infer R) => unknown ? R : never
 
@@ -13,11 +13,11 @@ export type ChainConfig = Readonly<{
     prefix: number | string
 }>
 
-export type ProcessorConfig<S> = Readonly<{
-    chain: ChainConfig
-    dataSource: Parameters<SubstrateProcessor<S>['setDataSource']>[HandlerParams.NAME]
-    typesBundle: Parameters<SubstrateProcessor<S>['setTypesBundle']>[HandlerParams.NAME]
-    batchSize?: Parameters<SubstrateProcessor<S>['setBatchSize']>[HandlerParams.NAME]
-    port?: Parameters<SubstrateProcessor<S>['setPrometheusPort']>[HandlerParams.NAME]
-    blockRange?: Parameters<SubstrateProcessor<S>['setBlockRange']>[HandlerParams.NAME]
-}>
+// export type ProcessorConfig<S> = Readonly<{
+//     chain: ChainConfig
+//     dataSource: Parameters<SubstrateProcessor<S>['setDataSource']>[HandlerParams.NAME]
+//     typesBundle: Parameters<SubstrateProcessor<S>['setTypesBundle']>[HandlerParams.NAME]
+//     batchSize?: Parameters<SubstrateProcessor<S>['setBatchSize']>[HandlerParams.NAME]
+//     port?: Parameters<SubstrateProcessor<S>['setPrometheusPort']>[HandlerParams.NAME]
+//     blockRange?: Parameters<SubstrateProcessor<S>['setBlockRange']>[HandlerParams.NAME]
+// }>

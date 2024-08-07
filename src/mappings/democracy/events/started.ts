@@ -1,59 +1,60 @@
 import { toHex } from '@subsquid/substrate-processor'
-import { EventHandlerContext } from '../../types/contexts'
-import { DemocracyStartedEvent } from '../../../types/events'
+import { started } from '../../../types/democracy/events'
 import { StorageNotExistsWarn, UnknownVersionError } from '../../../common/errors'
-import { EventContext } from '../../../types/support'
 import { ProposalStatus, ProposalType, ReferendumThresholdType } from '../../../model'
 import { storage } from '../../../storage'
 import { createReferendum } from '../../utils/proposals'
-
+import { Store } from '@subsquid/typeorm-store'
+import { ProcessorContext, Block, Event } from '../../../processor'
 interface ReferendumEventData {
     index: number
     threshold: string
 }
 
-function getEventData(ctx: EventContext): ReferendumEventData {
-    const event = new DemocracyStartedEvent(ctx)
-    if (event.isV1020) {
-        const [index, threshold] = event.asV1020
+function getEventData(ctx: ProcessorContext<Store>, itemEvent: Event): ReferendumEventData {
+    if (started.v900.is(itemEvent)) {
+        const [index, threshold] = started.v900.decode(itemEvent)
         return {
             index,
             threshold: threshold.__kind,
         }
-    } else if (event.isV9130) {
-        const { refIndex: index, threshold } = event.asV9130
+    } else if (started.v1201.is(itemEvent)) {
+        const { refIndex: index, threshold } = started.v1201.decode(itemEvent)
         return {
             index,
             threshold: threshold.__kind,
         }
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemEvent.name)
     }
 }
 
-export async function handleStarted(ctx: EventHandlerContext) {
-    const { index, threshold } = getEventData(ctx)
+export async function handleStarted(ctx: ProcessorContext<Store>,
+    item: Event,
+    header: Block) {
+    const { index, threshold } = getEventData(ctx, item)
+    const extrinsicIndex = `${header.height}-${item.index}`
 
-    const storageData = await storage.democracy.getReferendumInfoOf(ctx, index)
+    const storageData = await storage.democracy.getReferendumInfoOf(ctx, index, header)
     if (!storageData) {
         ctx.log.warn(StorageNotExistsWarn(ProposalType.Referendum, index))
         return
     }
 
     if (storageData.status === 'Finished') {
-        ctx.log.warn(`Referendum with index ${index} has already finished at block ${ctx.block.height}`)
+        ctx.log.warn(`Referendum with index ${index} has already finished at block ${header.height}`)
         return
     }
 
     const { hash, end, delay } = storageData
-    const hexHash = toHex(hash)
 
-    await createReferendum(ctx, {
+    await createReferendum(ctx, header, {
         index,
         threshold: threshold as ReferendumThresholdType,
         status: ProposalStatus.Started,
-        hash: hexHash,
+        hash: hash,
         end: end,
         delay: delay,
+        extrinsicIndex,
     })
 }

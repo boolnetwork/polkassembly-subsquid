@@ -1,13 +1,19 @@
 import { ProposalStatus, ProposalType } from '../../../model'
-import { EventHandlerContext } from '../../types/contexts'
+import { ProcessorContext, Event, Block } from '../../../processor'
 import { updateProposalStatus } from '../../utils/proposals'
 import { getCancelledData } from './getters'
+import { Store } from '@subsquid/typeorm-store'
 
-export async function handleCancelled(ctx: EventHandlerContext) {
-    const index = getCancelledData(ctx)
+export async function handleCancelled(ctx: ProcessorContext<Store>,
+    item: Event,
+    header: Block) {
+    const index = getCancelledData(ctx, item)
 
-    await updateProposalStatus(ctx, index, ProposalType.Referendum, {
+    const extrinsicIndex = `${header.height}-${item.index}`
+
+    await updateProposalStatus(ctx, header, index, ProposalType.Referendum, {
         isEnded: true,
         status: ProposalStatus.Cancelled,
+        extrinsicIndex,
     })
 }

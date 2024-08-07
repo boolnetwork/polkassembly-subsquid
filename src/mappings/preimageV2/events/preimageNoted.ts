@@ -1,48 +1,37 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-import { toHex } from '@subsquid/substrate-processor'
-import { EventHandlerContext } from '../../types/contexts'
 import { StorageNotExistsWarn, UnknownVersionError } from '../../../common/errors'
-import { BlockContext } from '../../../types/support'
-import { PreimagePreimageForStorage, PreimageStatusForStorage } from '../../../types/storage'
+import {
+    statusFor,
+    preimageFor,
+    requestStatusFor
+} from '../../../types/preimage/storage'
+
 import { ProposalStatus, ProposalType } from '../../../model'
-import { ss58codec, parseProposalCall } from '../../../common/tools'
 import { Chain } from '@subsquid/substrate-processor/lib/chain'
-import { Call } from '../../../types/v9111'
 import { createPreimageV2 } from '../../utils/proposals'
 import { getPreimageNotedData } from './getters'
+import { Store } from '@subsquid/typeorm-store'
+import { ProcessorContext, Event, Block } from '../../../processor'
 
-type ProposalCall = Call
+type ProposalCall = any
 
 interface PreimageStorageData {
-    data: Uint8Array
+    data: string
     status?: string
-    value?: number | [Uint8Array, bigint] | undefined
+    value?: number | [string, bigint] | undefined
     len?: number
 }
 
-function decodeProposal(chain: Chain, data: Uint8Array): ProposalCall {
-    // @ts-ignore
-    return chain.scaleCodec.decodeBinary(chain.description.call, data)
-}
+// function decodeProposal(chain: Chain, data: string): ProposalCall {
+//     // @ts-ignore
+//     return chain.scaleCodec.decodeBinary(chain.description.call, data)
+// }
 
-async function getStorageData(ctx: BlockContext, hash: Uint8Array): Promise<PreimageStorageData | undefined> {
-    const storage = new PreimagePreimageForStorage(ctx)
-    const preimageStatus: PreimageStatusStorageData | undefined = await getPreimageStatusData(ctx, hash)
-
-    console.log('storagev', storage.isExists)
-
-    if (storage.isV9160) {
-        const storageData = await storage.getAsV9160(hash)
-        if (!storageData) return undefined
-
-        return {
-            data: storageData,
-            ...preimageStatus
-        }
-    }
-    else if(storage.isV9320) {
+async function getStorageData(ctx: ProcessorContext<Store>, hash: string, block: any): Promise<PreimageStorageData | undefined> {
+    const preimageStatus: PreimageStatusStorageData | undefined = await getPreimageRequestStatusData(ctx, hash, block) || await getPreimageStatusData(ctx, hash, block)
+    if (preimageFor.v2000.is(block)) {
         if(preimageStatus && preimageStatus.len){
-            const storageData = await storage.getAsV9320([hash, preimageStatus.len])
+            const storageData = await preimageFor.v2000.get(block, [hash, preimageStatus.len])
             if (!storageData) return undefined
             return {
                 data: storageData,
@@ -50,33 +39,46 @@ async function getStorageData(ctx: BlockContext, hash: Uint8Array): Promise<Prei
             }
         }
         else {
-            throw new UnknownVersionError(storage.constructor.name)
+            throw new UnknownVersionError('preimage.PreimageFor')
         }
     }
     else {
-        throw new UnknownVersionError(storage.constructor.name)
+        return
     }
 }
 
 interface PreimageStatusStorageData{
     status: string
-    value: number | [Uint8Array, bigint] | undefined
+    value: number | [string, bigint] | undefined
     len?: number
 }
 
-export async function getPreimageStatusData(ctx: BlockContext, hash: Uint8Array): Promise<PreimageStatusStorageData | undefined> {
-    const preimageStorage = new PreimageStatusForStorage(ctx)
-    if (preimageStorage.isV9160) {
-        const storageData = await preimageStorage.getAsV9160(hash)
+export async function getPreimageRequestStatusData(ctx: ProcessorContext<Store>, hash: string, block: Block): Promise<PreimageStatusStorageData | undefined> {
+    if(requestStatusFor.v2700.is(block)) {
+        const storageData = await requestStatusFor.v2700.get(block, hash)
         if (!storageData) return undefined
-        return {
-            status: storageData.__kind,
-            value: storageData.value,
-            len: undefined
+        if(storageData.__kind == 'Unrequested'){
+            return {
+                status: storageData.__kind,
+                value: storageData.ticket,
+                len: storageData.len
+            }
+        } else{
+            return {
+                status: storageData.__kind,
+                value: storageData.maybeTicket,
+                len: storageData.maybeLen
+            }
         }
     }
-    else if(preimageStorage.isV9320) {
-        const storageData = await preimageStorage.getAsV9320(hash)
+    else {
+        throw new UnknownVersionError('preimage.StatusFor')
+    }
+}
+
+export async function getPreimageStatusData(ctx: ProcessorContext<Store>, hash: string, block: Block): Promise<PreimageStatusStorageData | undefined> {
+    if(statusFor.v2000.is(block)) {
+        const storageData = await statusFor.v2000.get(block, hash)
         if (!storageData) return undefined
         return {
             status: storageData.__kind,
@@ -85,57 +87,62 @@ export async function getPreimageStatusData(ctx: BlockContext, hash: Uint8Array)
         }
     }
     else {
-        throw new UnknownVersionError(preimageStorage.constructor.name)
+        throw new UnknownVersionError('preimage.StatusFor')
     }
 }
 
-export async function handlePreimageV2Noted(ctx: EventHandlerContext) {
-    const { hash } = getPreimageNotedData(ctx)
-    const hexHash = toHex(hash)
+export async function handlePreimageV2Noted(ctx: ProcessorContext<Store>,
+    item: Event,
+    header: any) {
+    if(!item.call) return;
+    const { hash } = getPreimageNotedData(ctx, item)
 
-    const storageData = await getStorageData(ctx, hash)
+    if(!item.call.args?.bytes) return;
+
+    const hexHash = hash
+    const extrinsicIndex = `${header.height}-${item.index}`
+
+    const storageData = await getPreimageStatusData(ctx, hash, header) || await getPreimageRequestStatusData(ctx, hash, header)
     if (!storageData) {
         ctx.log.warn(StorageNotExistsWarn('PreimageV2', hexHash))
         return
     }
-
-    let decodedCall:
-        | {
-              section: string
-              method: string
-              description: string
-              args: Record<string, unknown>
-          }
-        | undefined
-
+    let args;
     try {
-        const proposal = decodeProposal(ctx._chain as Chain, storageData.data)
-
-        const { section, method, args, description } = parseProposalCall(ctx._chain, proposal)
-
-        decodedCall = {
-            section,
-            method,
-            description,
-            args: args as Record<string, unknown>,
-        }
-    } catch (e) {
-        ctx.log.warn(`Failed to decode ProposedCall of Preimage ${hexHash} at block ${ctx.block.height}:\n ${e}`)
+        args = item.block._runtime.decodeCall(item?.call.args.bytes);
+    }
+    catch (e) {
+        console.log(`Error decoding call ${header.height}, extrinsicIndex: ${item.index} ${e}`)
+        return
     }
 
-    const value = storageData.value as [Uint8Array, bigint]
+    const section = args.__kind as string
+    const method = args.value.__kind as string
+    const desc = (item.block._runtime.calls.get(`${section}.${method}`).docs as string[]).join('\n');
 
-    const proposer =  storageData.value ? ss58codec.encode(value[0] as Uint8Array) : undefined
+    const { __kind, ...argsValue } = args.value;
+
+    const decodedCall = {
+        section,
+        method,
+        description: desc,
+        args: argsValue,
+    }
+
+    const value = storageData.value as [string, bigint]
+
+    const proposer =  storageData.value ? value[0] : undefined
     const deposit = storageData.value ? value[1] : undefined
 
-    await createPreimageV2(ctx, {
+    await createPreimageV2(ctx, header, {
         hash: hexHash,
         proposer,
         deposit,
         call: decodedCall,
         section: decodedCall?.section,
         method: decodedCall?.method,
-        status: ProposalStatus.Unrequested,
+        status: ProposalStatus.Noted,
         length: storageData.len,
+        extrinsicIndex,
     })
 }

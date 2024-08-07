@@ -1,40 +1,30 @@
 import { getOriginAccountId } from '../../../common/tools'
-import { CallHandlerContext } from '../../types/contexts' 
-import { NoDelegationFound, TooManyOpenDelegations } from '../../../common/errors'
-import { IsNull } from 'typeorm'
-import { removeDelegatedVotesOngoingReferenda, removeVote } from './helpers'
-import { Proposal, ProposalType } from '../../../model'
+import { handleSubstrateAndPrecompileUndelegate } from './utils'
 import { getUndelegateData } from './getters'
-import {
-    VotingDelegation
-} from '../../../model'
+import { Store } from '@subsquid/typeorm-store'
+import { Call, ProcessorContext } from '../../../processor'
 
-export async function handleUndelegate(ctx: CallHandlerContext): Promise<void> {
-    if (!(ctx.call as any).success) return
-    const from = getOriginAccountId(ctx.call.origin)
-    const { track } = getUndelegateData(ctx)
-    const delegations = await ctx.store.find(VotingDelegation, { where: { from, endedAtBlock: IsNull(), track } })
-    if (delegations.length > 1) {
-        //should never be the case
-        ctx.log.warn(TooManyOpenDelegations(ctx.block.height, track, from))
-    }
-    else if (delegations.length === 0) {
-        //should never be the case
-        ctx.log.warn(NoDelegationFound(ctx.block.height, track, from))
+export async function handleUndelegate(ctx: ProcessorContext<Store>,
+    item: Call,
+    header: any): Promise<void> {
+    if (!(item as any).success) return
+    const from = getOriginAccountId(item.origin)
+    const { track } = getUndelegateData(ctx, item)
+    if(!from){
         return
     }
-    const delegation = delegations[0]
-    delegation.endedAtBlock = ctx.block.height
-    delegation.endedAt = new Date(ctx.block.timestamp)
-    await ctx.store.save(delegation)
-    //remove currently delegated votes from ongoing referenda for this wallet
-    const ongoingReferenda = await ctx.store.find(Proposal, { where: { endedAt: IsNull(), trackNumber: track, type: ProposalType.ReferendumV2 } })
-    for (let i = 0; i < ongoingReferenda.length; i++) {
-        const referendum = ongoingReferenda[i]
-        if(!referendum || referendum.index == undefined || referendum.index == null){
-            continue
-        }
-        await removeVote(ctx, from, referendum.index, ctx.block.height, ctx.block.timestamp, false, true, delegation.to)
+    const extrinsicIndex = `${header.height}-${item.extrinsicIndex}`
+
+    await handleSubstrateAndPrecompileUndelegate(ctx, header, from, track, extrinsicIndex)
+}
+
+export async function handlePrecompileUndelegate(ctx: ProcessorContext<Store>, itemCall: any, header: any, data: any, originAccountId: any, txnHash?: string): Promise<void> {
+    const [track] = data
+    const from = originAccountId
+    if(!from){
+        return
     }
-    await removeDelegatedVotesOngoingReferenda(ctx, from, ctx.block.height, ctx.block.timestamp, track)
+    const extrinsicIndex = `${header.height}-${itemCall.extrinsicIndex}`
+
+    await handleSubstrateAndPrecompileUndelegate(ctx, header, from, Number(track), extrinsicIndex)
 }

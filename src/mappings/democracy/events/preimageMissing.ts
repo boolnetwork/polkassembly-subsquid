@@ -1,15 +1,18 @@
 import { toHex } from '@subsquid/substrate-processor'
-import { EventHandlerContext } from '../../types/contexts'
-import { ProposalStatus, ProposalType } from '../../../model'
+import { ProposalStatus } from '../../../model'
 import { updatePreimageStatus } from '../../utils/proposals'
 import { getPreimageMissingData } from './getters'
+import { Store } from '@subsquid/typeorm-store'
+import { ProcessorContext, Block, Event } from '../../../processor'
 
-export async function handlePreimageMissing(ctx: EventHandlerContext) {
-    const { hash } = getPreimageMissingData(ctx)
+export async function handlePreimageMissing(ctx: ProcessorContext<Store>,
+    item: Event,
+    header: Block) {
+    const { hash } = getPreimageMissingData(ctx, item)
+    const extrinsicIndex = `${header.height}-${item.index}`
 
-    const hexHash = toHex(hash)
-
-    await updatePreimageStatus(ctx, hexHash, {
+    await updatePreimageStatus(ctx, header, hash, {
         status: ProposalStatus.Missing,
+        extrinsicIndex,
     })
 }

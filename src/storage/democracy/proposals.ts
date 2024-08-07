@@ -1,32 +1,20 @@
 import { UnknownVersionError } from '../../common/errors'
-import { BlockContext } from '../../types/support'
-import { DemocracyPublicPropsStorage } from '../../types/storage'
+import { Store } from '@subsquid/typeorm-store'
+import { publicProps } from '../../types/democracy/storage'
+import { ProcessorContext, Block } from '../../processor'
 
 interface DemocracyProposalStorageData {
     index: number
-    hash: Uint8Array
-    proposer: Uint8Array
+    hash: string
+    proposer: string
 }
 
-async function getStorageData(ctx: BlockContext): Promise<DemocracyProposalStorageData[] | undefined> {
-    const storage = new DemocracyPublicPropsStorage(ctx)
-    if (storage.isV1020) {
-        const storageData = await storage.getAsV1020()
+async function getStorageData(ctx: ProcessorContext<Store>, block: Block): Promise<DemocracyProposalStorageData[] | undefined> {
+    if (publicProps.v900.is(block)) {
+        const storageData = await publicProps.v900.get(block)
         if (!storageData) return undefined
 
-        return storageData.map((proposal): DemocracyProposalStorageData => {
-            const [index, , proposer] = proposal
-            return {
-                index,
-                hash: new Uint8Array(32).fill(0),
-                proposer,
-            }
-        })
-    } else if (storage.isV1022) {
-        const storageData = await storage.getAsV1022()
-        if (!storageData) return undefined
-
-        return storageData.map((proposal): DemocracyProposalStorageData => {
+        return storageData.map((proposal: any): DemocracyProposalStorageData => {
             const [index, hash, proposer] = proposal
             return {
                 index,
@@ -34,8 +22,8 @@ async function getStorageData(ctx: BlockContext): Promise<DemocracyProposalStora
                 proposer,
             }
         })
-    } else if(storage.isV9320){
-        const storageData = await storage.getAsV9320()
+    } else if(publicProps.v2000.is(block)){
+        const storageData = await publicProps.v2000.get(block)
         if (!storageData) return undefined
 
         return storageData.map((proposal): DemocracyProposalStorageData => {
@@ -56,10 +44,10 @@ async function getStorageData(ctx: BlockContext): Promise<DemocracyProposalStora
         })
 
     }else {
-        throw new UnknownVersionError(storage.constructor.name)
+        throw new UnknownVersionError('Democracy.PublicProps')
     }
 }
 
-export async function getProposals(ctx: BlockContext) {
-    return await getStorageData(ctx)
+export async function getProposals(ctx: ProcessorContext<Store>, block: Block) {
+    return await getStorageData(ctx, block)
 }

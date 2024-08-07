@@ -1,189 +1,215 @@
 import { UnknownVersionError } from '../../../common/errors'
 import {
-    DemocracyCancelledEvent,
-    DemocracyExecutedEvent,
-    DemocracyNotPassedEvent,
-    DemocracyPassedEvent,
-    DemocracyPreimageInvalidEvent,
-    DemocracyPreimageMissingEvent,
-    DemocracyPreimageNotedEvent,
-    DemocracyPreimageReapedEvent,
-    DemocracyPreimageUsedEvent,
-} from '../../../types/events'
-import { EventContext } from '../../types/contexts'
+    cancelled,
+    executed,
+    notPassed,
+    passed,
+    preimageInvalid,
+    preimageMissing,
+    preimageNoted,
+    preimageReaped,
+    preimageUsed,
+    seconded,
+} from '../../../types/democracy/events'
+import { Store } from '@subsquid/typeorm-store'
+import { ProcessorContext, Event } from '../../../processor'
 
-export function getCancelledData(ctx: EventContext): number {
-    const event = new DemocracyCancelledEvent(ctx)
-    if (event.isV1020) {
-        return event.asV1020
-    } else if (event.isV9130) {
-        return event.asV9130.refIndex
+export function getCancelledData(ctx: ProcessorContext<Store>, itemEvent: Event): number {
+    if (cancelled.v900.is(itemEvent)) {
+        return cancelled.v900.decode(itemEvent)
+    } else if (cancelled.v1201.is(itemEvent)) {
+        return cancelled.v1201.decode(itemEvent).refIndex
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemEvent.name)
     }
 }
 
-export function getExecutedData(ctx: EventContext): number {
-    const event = new DemocracyExecutedEvent(ctx)
-    if (event.isV1020) {
-        return event.asV1020[0]
-    } else if (event.isV9090) {
-        return event.asV9090[0]
-    } else if (event.isV9111) {
-        return event.asV9111[0]
-    } else {
-        const data = ctx._chain.decodeEvent(ctx.event)
-        return data.refIndex
+export function getExecutedData(ctx: ProcessorContext<Store>, itemEvent: Event): number {
+     if (executed.v900.is(itemEvent)) {
+        return executed.v900.decode(itemEvent)[0]
+    } else if (executed.v1201.is(itemEvent)) {
+        return executed.v1201.decode(itemEvent).refIndex
+    } else if (executed.v1300.is(itemEvent)) {
+        return executed.v1300.decode(itemEvent).refIndex
+    } else if (executed.v1401.is(itemEvent)) {
+        return executed.v1401.decode(itemEvent).refIndex
+    } else if (executed.v1606.is(itemEvent)) {
+        return executed.v1606.decode(itemEvent).refIndex
+    } else{
+        throw new UnknownVersionError(itemEvent.name)
     }
 }
 
-export function getNotPassedData(ctx: EventContext): number {
-    const event = new DemocracyNotPassedEvent(ctx)
-    if (event.isV1020) {
-        return event.asV1020
-    } else if (event.isV9130) {
-        return event.asV9130.refIndex
+export function getNotPassedData(ctx: ProcessorContext<Store>, itemEvent: Event): number {
+    if (notPassed.v900.is(itemEvent)) {
+        return notPassed.v900.decode(itemEvent)
+    } else if (notPassed.v1201.is(itemEvent)) {
+        return notPassed.v1201.decode(itemEvent).refIndex
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemEvent.name)
     }
 }
 
-export function getPassedData(ctx: EventContext): number {
-    const event = new DemocracyPassedEvent(ctx)
-    if (event.isV1020) {
-        return event.asV1020
-    } else if (event.isV9130) {
-        return event.asV9130.refIndex
+export function getPassedData(ctx: ProcessorContext<Store>, itemEvent: Event): number {
+    if (passed.v900.is(itemEvent)) {
+        return passed.v900.decode(itemEvent)
+    } else if (passed.v1201.is(itemEvent)) {
+        return passed.v1201.decode(itemEvent).refIndex
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemEvent.name)
     }
 }
 
 export interface PreimageInvalidData {
-    hash: Uint8Array
+    hash: string
     index: number
 }
 
-export function getPreimageInvalidData(ctx: EventContext): PreimageInvalidData {
-    const event = new DemocracyPreimageInvalidEvent(ctx)
-    if (event.isV1022) {
-        const [hash, index] = event.asV1022
+export function getPreimageInvalidData(ctx: ProcessorContext<Store>, itemEvent: Event): PreimageInvalidData {
+    if (preimageInvalid.v900.is(itemEvent)) {
+        const [hash, index] = preimageInvalid.v900.decode(itemEvent)
         return {
             hash,
             index,
         }
-    } else if (event.isV9130) {
-        const { proposalHash: hash, refIndex: index } = event.asV9130
+    } else if (preimageInvalid.v1201.is(itemEvent)) {
+        const { proposalHash: hash, refIndex: index } = preimageInvalid.v1201.decode(itemEvent)
         return {
             hash,
             index,
         }
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemEvent.name)
     }
 }
 
 export interface PreimageMissingData {
-    hash: Uint8Array
+    hash: string
     index: number
 }
 
-export function getPreimageMissingData(ctx: EventContext): PreimageMissingData {
-    const event = new DemocracyPreimageMissingEvent(ctx)
-    if (event.isV1022) {
-        const [hash, index] = event.asV1022
+export function getPreimageMissingData(ctx: ProcessorContext<Store>, itemEvent: Event): PreimageMissingData {
+    if (preimageMissing.v900.is(itemEvent)) {
+        const [hash, index] = preimageMissing.v900.decode(itemEvent)
         return {
             hash,
             index,
         }
-    } else if (event.isV9130) {
-        const { proposalHash: hash, refIndex: index } = event.asV9130
+    } else if (preimageMissing.v1201.is(itemEvent)) {
+        const { proposalHash: hash, refIndex: index } = preimageMissing.v1201.decode(itemEvent)
         return {
             hash,
             index,
         }
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemEvent.name)
     }
 }
 
 interface PreimageNotedData {
-    hash: Uint8Array
-    provider: Uint8Array
+    hash: string
+    provider: string
     deposit: bigint
 }
 
-export function getPreimageNotedData(ctx: EventContext): PreimageNotedData {
-    const event = new DemocracyPreimageNotedEvent(ctx)
-    if (event.isV1022) {
-        const [hash, provider, deposit] = event.asV1022
+export function getPreimageNotedData(ctx: ProcessorContext<Store>, itemEvent: Event): PreimageNotedData {
+    if (preimageNoted.v900.is(itemEvent)) {
+        const [hash, provider, deposit] = preimageNoted.v900.decode(itemEvent)
         return {
             hash,
             provider,
             deposit,
         }
-    } else if (event.isV9130) {
-        const { proposalHash: hash, who: provider, deposit } = event.asV9130
+    } else if (preimageNoted.v1201.is(itemEvent)) {
+        const { proposalHash: hash, who: provider, deposit } = preimageNoted.v1201.decode(itemEvent)
         return {
             hash,
             provider,
             deposit,
         }
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemEvent.name)
     }
 }
 
 export interface PreimageReapedData {
-    hash: Uint8Array
-    provider: Uint8Array
+    hash: string
+    provider: string
     deposit: bigint
 }
 
-export function getPreimageReapedData(ctx: EventContext): PreimageReapedData {
-    const event = new DemocracyPreimageReapedEvent(ctx)
-    if (event.isV1022) {
-        const [hash, provider, deposit] = event.asV1022
+export function getPreimageReapedData(ctx: ProcessorContext<Store>, itemEvent: Event): PreimageReapedData {
+    if (preimageReaped.v900.is(itemEvent)) {
+        const [hash, provider, deposit] = preimageReaped.v900.decode(itemEvent)
         return {
             hash,
             provider,
             deposit,
         }
-    } else if (event.isV9130) {
-        const { proposalHash: hash, provider, deposit } = event.asV9130
+    } else if (preimageReaped.v1201.is(itemEvent)) {
+        const { proposalHash: hash, provider, deposit } = preimageReaped.v1201.decode(itemEvent)
         return {
             hash,
             provider,
             deposit,
         }
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemEvent.name)
     }
 }
 
 export interface PreimageUsedData {
-    hash: Uint8Array
-    provider: Uint8Array
+    hash: string
+    provider: string
     deposit: bigint
 }
 
-export function getPreimageUsedData(ctx: EventContext): PreimageUsedData {
-    const event = new DemocracyPreimageUsedEvent(ctx)
-    if (event.isV1022) {
-        const [hash, provider, deposit] = event.asV1022
+export function getPreimageUsedData(ctx: ProcessorContext<Store>, itemEvent: Event): PreimageUsedData {
+    if (preimageUsed.v900.is(itemEvent)) {
+        const [hash, provider, deposit] = preimageUsed.v900.decode(itemEvent)
         return {
             hash,
             provider,
             deposit,
         }
-    } else if (event.isV9130) {
-        const { proposalHash: hash, provider, deposit } = event.asV9130
+    } else if (preimageUsed.v1201.is(itemEvent)) {
+        const { proposalHash: hash, provider, deposit } = preimageUsed.v1201.decode(itemEvent)
         return {
             hash,
             provider,
             deposit,
         }
     } else {
-        throw new UnknownVersionError(event.constructor.name)
+        throw new UnknownVersionError(itemEvent.name)
+    }
+}
+
+interface DemocracySecondedData {
+    accountId: string
+    refIndex: number
+}
+
+export function getDemocracySecondedData(ctx: ProcessorContext<Store>, itemEvent: Event): DemocracySecondedData {
+    if (seconded.v1001.is(itemEvent)) {
+        const [seconder, propIndex] = seconded.v1001.decode(itemEvent)
+        return {
+            accountId: seconder,
+            refIndex: propIndex
+        }
+    } else if (seconded.v1201.is(itemEvent)) {
+        const { who: seconder, proposalIndex: propIndex } = seconded.v1201.decode(itemEvent)
+        return {
+            accountId: seconder,
+            refIndex: propIndex
+        }
+    } else if (seconded.v1300.is(itemEvent)) {
+        const { seconder, propIndex } = seconded.v1300.decode(itemEvent)
+        return {
+            accountId: seconder,
+            refIndex: propIndex
+        }
+    }
+    else {
+        throw new UnknownVersionError(itemEvent.name)
     }
 }

@@ -1,15 +1,18 @@
 import { toHex } from '@subsquid/substrate-processor'
-import { EventHandlerContext } from '../../types/contexts'
-import { ProposalStatus, ProposalType } from '../../../model'
+import { ProposalStatus } from '../../../model'
 import { updatePreimageStatus } from '../../utils/proposals'
 import { getPreimageUsedData } from './getters'
+import { Store } from '@subsquid/typeorm-store'
+import { ProcessorContext, Block, Event } from '../../../processor'
 
-export async function handlePreimageUsed(ctx: EventHandlerContext) {
-    const { hash } = getPreimageUsedData(ctx)
+export async function handlePreimageUsed(ctx: ProcessorContext<Store>,
+    item: Event,
+    header: Block) {
+    const { hash } = getPreimageUsedData(ctx, item)
+    const extrinsicIndex = `${header.height}-${item.index}`
 
-    const hexHash = toHex(hash)
-
-    await updatePreimageStatus(ctx, hexHash, {
+    await updatePreimageStatus(ctx, header, hash, {
         status: ProposalStatus.Used,
+        extrinsicIndex,
     })
 }

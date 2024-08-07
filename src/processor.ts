@@ -1,118 +1,186 @@
-import { SubstrateProcessor } from '@subsquid/substrate-processor'
+
+import { lookupArchive } from '@subsquid/archive-registry'
+import { BlockHeader, DataHandlerContext, SubstrateBatchProcessor, SubstrateBatchProcessorFields, Event as _Event, Call as _Call, Extrinsic as _Extrinsic } from '@subsquid/substrate-processor'
 import { TypeormDatabase } from '@subsquid/typeorm-store'
-import config from './config'
 import * as modules from './mappings'
+import { events, calls } from './types'
+import { PRECOMPILES } from './consts/consts'
+//@ts-ignore ts(2589)
+const processor = new SubstrateBatchProcessor()
+    .setDataSource({
+        chain: 'wss://wss.api.moonbeam.network',
+        archive: lookupArchive('moonbeam',  {type: 'Substrate', release: 'ArrowSquid' }),
+    })
+    .setBlockRange({ from: 0})
+    .setFields({event: {}, call: { origin: true, success: true, error: true }, extrinsic: { hash: true, fee: true, tip: true }, block: { timestamp: true } })
+    .addCall({
+        name: [ 'ConvictionVoting.vote', 'ConvictionVoting.delegate', 'ConvictionVoting.undelegate', 'ConvictionVoting.remove_vote', 'ConvictionVoting.remove_other_vote', 'Democracy.vote',
+        'Democracy.remove_vote', 'Democracy.remove_other_vote', 'Democracy.delegate', 'Democracy.undelegate',
+    ]
+    })
+    .addEvent({
+        name: [ 'Referenda.Submitted', 'Referenda.Cancelled', 'Referenda.DecisionDepositPlaced', 'Referenda.Rejected', 'Referenda.TimedOut', 'Referenda.Approved', 'Referenda.DecisionStarted', 'Referenda.ConfirmStarted', 
+        'Referenda.ConfirmAborted', 'Referenda.Killed', 'Referenda.Confirmed', 'Preimage.Requested', 'Preimage.Noted', 'Preimage.Cleared', 'Preimage.Cleared', 'Referenda.ConfirmStarted', 
+        'Referenda.ConfirmAborted', 'Democracy.Proposed', 'Democracy.Tabled', 'Democracy.Started', 'Democracy.Passed', 'Democracy.NotPassed', 'Democracy.Cancelled', 'Democracy.Executed', 
+        'Democracy.PreimageNoted', 'Democracy.PreimageUsed', 'Democracy.PreimageInvalid', 'Democracy.PreimageMissing', 'Democracy.PreimageReaped', 'DemocracySeconded', 'Treasury.Proposed', 
+        'Treasury.Awarded', 'Treasury.Rejected', 'Treasury.SpendApproved', 'Scheduler.Dispatched'
+    ],
+        call: true,
+        extrinsic: true
+    })
+    .addEthereumTransaction({to: PRECOMPILES})
+    processor.run(new TypeormDatabase(), async (ctx: any) => {
+        for (let block of ctx.blocks) {
+            for (let event of block.events) {
+                if (event.name == 'Democracy.Proposed'){
+                    await modules.democracy.events.handleProposed(ctx, event, block.header)
+                }
+                if (event.name == 'Democracy.Tabled'){
+                    await modules.democracy.events.handleTabled(ctx, event, block.header)
+                }
+                if (event.name == 'Democracy.Started'){
+                    await modules.democracy.events.handleStarted(ctx, event, block.header)
+                }
+                if (event.name == 'Democracy.Passed'){
+                    await modules.democracy.events.handlePassed(ctx, event, block.header)
+                }
+                if (event.name == 'Democracy.NotPassed'){
+                    await modules.democracy.events.handleNotPassed(ctx, event, block.header)
+                }
+                if (event.name == 'Democracy.Cancelled'){
+                    await modules.democracy.events.handleCancelled(ctx, event, block.header)
+                }
+                if (event.name == 'Democracy.Executed'){
+                    await modules.democracy.events.handleExecuted(ctx, event, block.header)
+                }
+                if (event.name == 'Democracy.Seconded'){
+                    await modules.democracy.events.handleDemocracySeconds(ctx, event, block.header)
+                }
+                if (event.name == 'Democracy.PreimageNoted'){
+                    await modules.democracy.events.handlePreimageNoted(ctx, event, block.header)
+                }
+                if (event.name == 'Democracy.PreimageUsed'){
+                    await modules.democracy.events.handlePreimageUsed(ctx, event, block.header)
+                }
+                if (event.name == 'Democracy.PreimageInvalid'){
+                    await modules.democracy.events.handlePreimageInvalid(ctx, event, block.header)
+                }
+                if (event.name == 'Democracy.PreimageMissing'){
+                    await modules.democracy.events.handlePreimageMissing(ctx, event, block.header)
+                }
+                if (event.name == 'Democracy.PreimageReaped'){
+                    await modules.democracy.events.handlePreimageReaped(ctx, event, block.header)
+                }
+                if (event.name == 'Treasury.Proposed'){
+                    await modules.treasury.events.handleProposed(ctx, event, block.header)
+                }
+                if (event.name == 'Treasury.Awarded'){
+                    await modules.treasury.events.handleAwarded(ctx, event, block.header)
+                }
+                if (event.name == 'Treasury.Rejected'){
+                    await modules.treasury.events.handleRejected(ctx, event, block.header)
+                }
+                if (event.name == 'Treasury.SpendApproved'){
+                    await modules.treasury.events.handleSpendApproved(ctx, event, block.header)
+                }
+                if (event.name == events.referenda.submitted.name){
+                    await modules.referendumV2.events.handleSubmitted(ctx, event, block.header)
+                }
+                if (event.name == events.referenda.approved.name){
+                    await modules.referendumV2.events.handleApproved(ctx, event, block.header)
+                }
+                if (event.name == events.referenda.cancelled.name){
+                    await modules.referendumV2.events.handleCancelled(ctx, event, block.header)
+                }
+                if (event.name == events.referenda.rejected.name){
+                    await modules.referendumV2.events.handleRejected(ctx, event, block.header)
+                }
+                if (event.name == events.referenda.timedOut.name){
+                    await modules.referendumV2.events.handleTimedOut(ctx, event, block.header)
+                }
+                if (event.name == events.referenda.killed.name){
+                    await modules.referendumV2.events.handleKilled(ctx, event, block.header)
+                }
+                if (event.name == events.referenda.decisionDepositPlaced.name){
+                    await modules.referendumV2.events.handleDecisionDepositPlaced(ctx, event, block.header)
+                }                
+                if (event.name == events.referenda.decisionStarted.name){
+                    await modules.referendumV2.events.handleDecisionStarted(ctx, event, block.header)
+                }                
+                if (event.name == events.referenda.confirmStarted.name){
+                    await modules.referendumV2.events.handleConfirmStarted(ctx, event, block.header)
+                }
+                if (event.name == events.referenda.confirmAborted.name){
+                    await modules.referendumV2.events.handleConfirmAborted(ctx, event, block.header)
+                }
+                if (event.name == events.referenda.confirmed.name){
+                    await modules.referendumV2.events.handleConfirmed(ctx, event, block.header)
+                }
+                if (event.name == events.referenda.cancelled.name){
+                    await modules.referendumV2.events.handleCancelled(ctx, event, block.header)
+                }
+                if (event.name == events.preimage.noted.name){
+                    await modules.preimageV2.events.handlePreimageV2Noted(ctx, event, block.header)
+                }
+                if (event.name == events.preimage.cleared.name){
+                    await modules.preimageV2.events.handlePreimageV2Cleared(ctx, event, block.header)
+                }
+                if (event.name == events.preimage.requested.name){
+                    await modules.preimageV2.events.handlePreimageV2Requested(ctx, event, block.header)
+                }
+                if(event.name == 'Scheduler.Dispatched'){
+                    await modules.referendumV2.events.handleReferendumV2Execution(ctx, event, block.header)
+                }
+            }
+            for (let call of block.calls){
+                if (call.name == calls.convictionVoting.vote.name){
+                    await modules.referendumV2.extrinsics.handleConvictionVote(ctx, call, block.header)
+                }
+                if (call.name == calls.convictionVoting.removeOtherVote.name){
+                    await modules.referendumV2.extrinsics.handleRemoveOtherVote(ctx, call, block.header)
+                }
+                if (call.name == calls.convictionVoting.delegate.name){
+                    await modules.referendumV2.extrinsics.handleDelegate(ctx, call, block.header)
+                }
+                if (call.name == calls.convictionVoting.undelegate.name){
+                    await modules.referendumV2.extrinsics.handleUndelegate(ctx, call, block.header)
+                }
+                if (call.name == calls.convictionVoting.removeVote.name){
+                    await modules.referendumV2.extrinsics.handleRemoveVote(ctx, call, block.header)
+                }
+                if (call.name == calls.democracy.vote.name){
+                    await modules.democracy.extrinsics.handleDemocracyVote(ctx, call, block.header)
+                }
+                if (call.name == calls.democracy.removeVote.name){
+                    await modules.democracy.extrinsics.handleRemoveVote(ctx, call, block.header)
+                }
+                if (call.name == calls.democracy.removeOtherVote.name){
+                    await modules.democracy.extrinsics.handleRemoveOtherVote(ctx, call, block.header)
+                }
+                if (call.name == calls.democracy.delegate.name){
+                    await modules.democracy.extrinsics.handleDelegate(ctx, call, block.header)
+                }
+                if (call.name == calls.democracy.undelegate.name){
+                    await modules.democracy.extrinsics.handleUndelegate(ctx, call, block.header)
+                }
+                if (call.name == calls.ethereum.transact.name){
+                    await modules.ethereum.extrinsics.handlePrecompileTransaction(ctx, call, block.header)
+                }
+            }
+            // for (let hash in recievedTxns){
+            //     if(executedTxns[hash]){
+            //         if(recievedTxns[hash] && recievedTxns[hash][0] && recievedTxns[hash][1]){
+            //             await modules.ethereum.extrinsics.handlePrecompileTransaction(ctx, recievedTxns[hash][0], recievedTxns[hash][1])
+            //         }
+            //     }
+            // }
+        }  
+    });
 
-const db = new TypeormDatabase()
-const processor = new SubstrateProcessor(db)
 
-processor.setTypesBundle(config.typesBundle)
-processor.setBatchSize(config.batchSize || 100)
-processor.setDataSource(config.dataSource)
-processor.setBlockRange({ from: 0})
-
-processor.addEventHandler('Democracy.Proposed', modules.democracy.events.handleProposed)
-processor.addEventHandler('Democracy.Tabled', modules.democracy.events.handleTabled)
-processor.addEventHandler('Democracy.Started', modules.democracy.events.handleStarted)
-processor.addEventHandler('Democracy.Passed', modules.democracy.events.handlePassed)
-processor.addEventHandler('Democracy.NotPassed', modules.democracy.events.handleNotPassed)
-processor.addEventHandler('Democracy.Cancelled', modules.democracy.events.handleCancelled)
-processor.addEventHandler('Democracy.Executed', modules.democracy.events.handleExecuted)
-processor.addCallHandler('Democracy.vote', modules.democracy.extrinsics.handleVote)
-
-processor.addEventHandler('Democracy.PreimageNoted', modules.democracy.events.handlePreimageNoted)
-processor.addEventHandler('Democracy.PreimageUsed', modules.democracy.events.handlePreimageUsed)
-processor.addEventHandler('Democracy.PreimageInvalid', modules.democracy.events.handlePreimageInvalid)
-processor.addEventHandler('Democracy.PreimageMissing', modules.democracy.events.handlePreimageMissing)
-processor.addEventHandler('Democracy.PreimageReaped', modules.democracy.events.handlePreimageReaped)
-
-processor.addEventHandler('Council.Proposed', modules.council.events.handleProposed)
-processor.addEventHandler('Council.Approved', modules.council.events.handleApproved)
-processor.addEventHandler('Council.Dissaproved', modules.council.events.handleDisapproved)
-processor.addEventHandler('Council.Closed', modules.council.events.handleClosed)
-processor.addEventHandler('Council.Voted', modules.council.events.handleVoted)
-processor.addEventHandler('Council.Executed', modules.council.events.handleExecuted)
-
-processor.addEventHandler('TechnicalCommittee.Proposed', modules.techComittee.events.handleProposed)
-processor.addEventHandler('TechnicalCommittee.Approved', modules.techComittee.events.handleApproved)
-processor.addEventHandler('TechnicalCommittee.Dissaproved', modules.techComittee.events.handleDisapproved)
-processor.addEventHandler('TechnicalCommittee.Closed', modules.techComittee.events.handleClosed)
-processor.addEventHandler('TechnicalCommittee.Voted', modules.techComittee.events.handleVoted)
-processor.addEventHandler('TechnicalCommittee.Executed', modules.techComittee.events.handleExecuted)
-
-processor.addEventHandler('Treasury.Proposed', modules.treasury.events.handleProposed)
-processor.addEventHandler('Treasury.Awarded', modules.treasury.events.handleAwarded)
-processor.addEventHandler('Treasury.Rejected', modules.treasury.events.handleRejected)
-processor.addEventHandler('Treasury.BountyProposed', modules.bounties.events.handleProposed)
-processor.addEventHandler('Treasury.BountyRejected', modules.bounties.events.handleRejected)
-processor.addEventHandler('Treasury.BountyBecameActive', modules.bounties.events.handleBecameActive)
-processor.addEventHandler('Treasury.BountyAwarded', modules.bounties.events.handleAwarded)
-processor.addEventHandler('Treasury.BountyClaimed', modules.bounties.events.handleClaimed)
-processor.addEventHandler('Treasury.BountyCanceled', modules.bounties.events.handleCanceled)
-processor.addEventHandler('Treasury.BountyExtended', modules.bounties.events.handleExtended)
-processor.addEventHandler('Treasury.NewTip', modules.tips.events.handleNewTip)
-processor.addEventHandler('Treasury.TipsClosed', modules.tips.events.handleClosed)
-processor.addEventHandler('Treasury.TipsRetracted', modules.tips.events.handleRetracted)
-processor.addEventHandler('Treasury.TipsSlashed', modules.tips.events.handleSlashed)
-processor.addCallHandler('Treasury.accept_curator', modules.bounties.extrinsic.handleAcceptCurator)
-processor.addCallHandler('Treasury.unassign_curator', modules.bounties.extrinsic.handleUnassignCurator)
-
-processor.addEventHandler('Tips.NewTip', modules.tips.events.handleNewTip)
-processor.addEventHandler('Tips.TipClosed', modules.tips.events.handleClosed)
-processor.addEventHandler('Tips.TipRetracted', modules.tips.events.handleRetracted)
-processor.addEventHandler('Tips.TipSlashed', modules.tips.events.handleSlashed)
-processor.addCallHandler('Tips.tip', modules.tips.extrinsics.handleNewTipValue)
-
-processor.addEventHandler('Bounties.BountyProposed', modules.bounties.events.handleProposed)
-processor.addEventHandler('Bounties.BountyRejected', modules.bounties.events.handleRejected)
-processor.addEventHandler('Bounties.BountyBecameActive', modules.bounties.events.handleBecameActive)
-processor.addEventHandler('Bounties.BountyAwarded', modules.bounties.events.handleAwarded)
-processor.addEventHandler('Bounties.BountyClaimed', modules.bounties.events.handleClaimed)
-processor.addEventHandler('Bounties.BountyCanceled', modules.bounties.events.handleCanceled)
-processor.addEventHandler('Bounties.BountyExtended', modules.bounties.events.handleExtended)
-processor.addCallHandler('Bounties.accept_curator', modules.bounties.extrinsic.handleAcceptCurator)
-processor.addCallHandler('Bounties.unassign_curator', modules.bounties.extrinsic.handleUnassignCurator)
-
-processor.addEventHandler('ChildBounties.Added', modules.childBounties.events.handleProposed)
-processor.addEventHandler('ChildBounties.Awarded', modules.childBounties.events.handleAwarded)
-processor.addEventHandler('ChildBounties.Claimed', modules.childBounties.events.handleClaimed)
-processor.addEventHandler('ChildBounties.Canceled', modules.childBounties.events.handleCancelled)
-processor.addCallHandler('ChildBounties.accept_curator', modules.childBounties.extrinsic.handleAcceptCurator)
-processor.addCallHandler('ChildBounties.unassign_curator', modules.childBounties.extrinsic.handleUnassignCurator)
-
-processor.addEventHandler('Preimage.Noted', modules.preimageV2.events.handlePreimageV2Noted)
-processor.addEventHandler('Preimage.Cleared', modules.preimageV2.events.handlePreimageV2Cleared)
-processor.addEventHandler('Preimage.Requested', modules.preimageV2.events.handlePreimageV2Requested)
-
-processor.addEventHandler('Referenda.Submitted', modules.referendumV2.events.handleSubmitted)
-processor.addEventHandler('Referenda.Rejected', modules.referendumV2.events.handleRejected)
-processor.addEventHandler('Referenda.Approved', modules.referendumV2.events.handleApproved)
-processor.addEventHandler('Referenda.Killed', modules.referendumV2.events.handleKilled)
-processor.addEventHandler('Referenda.TimedOut', modules.referendumV2.events.handleTimedOut)
-processor.addEventHandler('Referenda.DecisionDepositPlaced', modules.referendumV2.events.handleDecisionDepositPlaced)
-processor.addEventHandler('Referenda.DecisionStarted', modules.referendumV2.events.handleDecisionStarted)
-processor.addEventHandler('Referenda.Confirmed', modules.referendumV2.events.handleConfirmed)
-processor.addEventHandler('Referenda.ConfirmStarted', modules.referendumV2.events.handleConfirmStarted)
-processor.addEventHandler('Referenda.ConfirmAborted', modules.referendumV2.events.handleConfirmAborted)
-processor.addEventHandler('Referenda.Cancelled', modules.referendumV2.events.handleCancelled)
-
-processor.addCallHandler('ConvictionVoting.vote', modules.referendumV2.extrinsics.handleConvictionVote)
-processor.addCallHandler('ConvictionVoting.delegate', modules.referendumV2.extrinsics.handleDelegate)
-processor.addCallHandler('ConvictionVoting.undelegate', modules.referendumV2.extrinsics.handleUndelegate)
-processor.addCallHandler('ConvictionVoting.remove_vote', modules.referendumV2.extrinsics.handleRemoveVote)
-processor.addCallHandler('ConvictionVoting.remove_other_vote', modules.referendumV2.extrinsics.handleRemoveOtherVote)
-
-processor.addEventHandler('FellowshipReferenda.Submitted', modules.fellowshipReferendum.events.handleSubmitted)
-processor.addEventHandler('FellowshipReferenda.Rejected', modules.fellowshipReferendum.events.handleRejected)
-processor.addEventHandler('FellowshipReferenda.Approved', modules.fellowshipReferendum.events.handleApproved)
-processor.addEventHandler('FellowshipReferenda.Killed', modules.fellowshipReferendum.events.handleKilled)
-processor.addEventHandler('FellowshipReferenda.TimedOut', modules.fellowshipReferendum.events.handleTimedOut)
-processor.addEventHandler('FellowshipReferenda.DecisionDepositPlaced', modules.fellowshipReferendum.events.handleDecisionDepositPlaced)
-processor.addEventHandler('FellowshipReferenda.DecisionStarted', modules.fellowshipReferendum.events.handleDecisionStarted)
-processor.addEventHandler('FellowshipReferenda.Confirmed', modules.fellowshipReferendum.events.handleConfirmed)
-processor.addEventHandler('FellowshipReferenda.ConfirmStarted', modules.fellowshipReferendum.events.handleConfirmStarted)
-processor.addEventHandler('FellowshipReferenda.ConfirmAborted', modules.fellowshipReferendum.events.handleConfirmAborted)
-processor.addEventHandler('FellowshipReferenda.Cancelled', modules.fellowshipReferendum.events.handleCancelled)
-processor.addEventHandler('FellowshipCollective.Voted', modules.fellowshipReferendum.events.handleFellowshipVotes)
-
-processor.run()
+export type Fields = SubstrateBatchProcessorFields<typeof processor>
+export type Block = BlockHeader<Fields>
+export type Event = _Event<Fields>
+export type Call = _Call<Fields>
+export type Extrinsic = _Extrinsic<Fields>
+export type ProcessorContext<Store> = DataHandlerContext<Store, Fields>

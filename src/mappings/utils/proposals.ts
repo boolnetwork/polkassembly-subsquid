@@ -1,12 +1,15 @@
 import { FindOneOptions, Store } from '@subsquid/typeorm-store'
 import { toJSON } from '@subsquid/util-internal-json'
-import { Any } from 'typeorm'
+import { toHex } from '@subsquid/substrate-processor'
 import { MissingProposalRecordWarn } from '../../common/errors'
 import { ss58codec } from '../../common/tools'
+import { NOTIFICATION_URL, REDIS_CF_URL } from '../../consts/consts'
+import { referendumV2EnactmentBlocks, fellowshipEnactmentBlocks } from '../../common/originEnactBlock'
+import fetch from 'node-fetch'
+
 import {
     MotionThreshold,
     Preimage,
-    PreimageV2,
     Proposal,
     ProposalStatus,
     ProposalType,
@@ -21,7 +24,6 @@ import {
     Tippers,
     ProposalGroup,
 } from '../../model'
-import { EventHandlerContext } from '../types/contexts'
 import {
     BountyData,
     ChildBountyData,
@@ -30,7 +32,6 @@ import {
     HashProposal,
     IndexProposal,
     PreimageData,
-    PreimageDataV2,
     ProposedCallData,
     ReferendumData,
     ReferendumDataV2,
@@ -42,6 +43,9 @@ import {
     DecidingData,
     TallyData,
 } from '../types/data'
+import { randomUUID } from 'crypto'
+import { ProcessorContext } from '../../processor'
+import config from '../../config'
 
 type ProposalUpdateData = Partial<
     Omit<
@@ -51,11 +55,13 @@ type ProposalUpdateData = Partial<
 >
 
 export async function updatePreimageStatus(
-    ctx: EventHandlerContext,
+    ctx: ProcessorContext<Store>,
+    header: any,
     hash: string,
     options: {
         status: ProposalStatus
         isEnded?: boolean
+        extrinsicIndex?: string
         data?: ProposalUpdateData
     }
 ) {
@@ -67,23 +73,36 @@ export async function updatePreimageStatus(
     }
 
     Object.assign(proposal, options.data)
-    proposal.updatedAt = new Date(ctx.block.timestamp)
-    proposal.updatedAtBlock = ctx.block.height
+    proposal.updatedAt = new Date(header.timestamp)
+    proposal.updatedAtBlock = header.height
     proposal.status = options.status
+
+    await ctx.store.insert(
+        new StatusHistory({
+            id: randomUUID(),
+            block: proposal.updatedAtBlock || undefined,
+            timestamp: proposal.updatedAt,
+            status: proposal.status,
+            extrinsicIndex: options?.extrinsicIndex,
+            preimage: proposal,
+        })
+    )
 
     await ctx.store.save(proposal)
 }
 
 export async function updatePreimageStatusV2(
-    ctx: EventHandlerContext,
+    ctx: ProcessorContext<Store>,
+    header: any,
     hash: string,
     options: {
         status: ProposalStatus
+        extrinsicIndex?: string
         isEnded?: boolean
         data?: ProposalUpdateData
     }
 ) {
-    const proposal = await ctx.store.get(PreimageV2, { where: { hash: hash } })
+    const proposal = await ctx.store.get(Preimage, { where: { hash: hash }, order: {createdAtBlock: 'DESC'}})
 
     if (!proposal) {
         ctx.log.warn(MissingProposalRecordWarn('PreimageV2', `with hash ${hash} not found`,))
@@ -91,39 +110,56 @@ export async function updatePreimageStatusV2(
     }
 
     Object.assign(proposal, options.data)
-    proposal.updatedAt = new Date(ctx.block.timestamp)
-    proposal.updatedAtBlock = ctx.block.height
+    proposal.updatedAt = new Date(header.timestamp)
+    proposal.updatedAtBlock = header.height
     proposal.status = options.status
+
+    await ctx.store.insert(
+        new StatusHistory({
+            id: randomUUID(),
+            block: proposal.updatedAtBlock || undefined,
+            timestamp: proposal.updatedAt,
+            status: proposal.status,
+            extrinsicIndex: options?.extrinsicIndex,
+            preimage: proposal,
+        })
+    )
 
     await ctx.store.save(proposal)
 }
 
 export async function updateProposalStatus(
-    ctx: EventHandlerContext,
+    ctx: ProcessorContext<Store>,
+    header: any,
     index: number,
     type: IndexProposal,
     options: {
         status: ProposalStatus
+        extrinsicIndex?: string
         isEnded?: boolean
         data?: ProposalUpdateData
     }
 ): Promise<void>
 export async function updateProposalStatus(
-    ctx: EventHandlerContext,
+    ctx: ProcessorContext<Store>,
+    header: any,
     hash: string,
     type: HashProposal,
     options: {
         status: ProposalStatus
+        extrinsicIndex?: string
         isEnded?: boolean
         data?: ProposalUpdateData
     }
 ): Promise<void>
 export async function updateProposalStatus(
-    ctx: EventHandlerContext,
+    ctx: ProcessorContext<Store>,
+    header: any,
     hashOrIndex: string | number,
     type: ProposalType,
     options: {
         status: ProposalStatus
+        extrinsicIndex?: string
         isEnded?: boolean
         data?: ProposalUpdateData
     }
@@ -145,13 +181,13 @@ export async function updateProposalStatus(
     })
 
     if (!proposal) {
-        ctx.log.warn(MissingProposalRecordWarn(type, hashOrIndex))
+        ctx.log.warn(MissingProposalRecordWarn(type, hashOrIndex, options.extrinsicIndex))
         return
     }
 
     Object.assign(proposal, options.data)
-    proposal.updatedAt = new Date(ctx.block.timestamp)
-    proposal.updatedAtBlock = ctx.block.height
+    proposal.updatedAt = new Date(header.timestamp)
+    proposal.updatedAtBlock = header.height
     proposal.status = options.status
 
     if (options.isEnded) {
@@ -159,21 +195,31 @@ export async function updateProposalStatus(
         proposal.endedAt = proposal.updatedAt
     }
 
+    if(type == ProposalType.ReferendumV2 && options.status == ProposalStatus.Confirmed && proposal.origin){
+        proposal.executeAtBlockNumber = header.height + referendumV2EnactmentBlocks[proposal.origin]
+    }
+    if(type == ProposalType.FellowshipReferendum && options.status == ProposalStatus.Confirmed && proposal.trackNumber){
+        proposal.executeAtBlockNumber = header.height + fellowshipEnactmentBlocks[proposal.trackNumber]
+    }
+
     await ctx.store.save(proposal)
 
     await ctx.store.insert(
         new StatusHistory({
-            id: ctx.event.id,
-            block: proposal.updatedAtBlock,
+            id: randomUUID(),
+            block: proposal.updatedAtBlock || undefined,
             timestamp: proposal.updatedAt,
             status: proposal.status,
+            extrinsicIndex: options?.extrinsicIndex,
             proposal,
         })
     )
+    await sendNotification(ctx, proposal, 'proposalStatusChanged')
+    await updateRedis(ctx, proposal)
 }
 
 async function getOrCreateProposalGroup(
-    ctx: EventHandlerContext,
+    ctx: ProcessorContext<Store>,
     index: number,
     type: ProposalType,
     parentId: number,
@@ -200,6 +246,9 @@ async function getOrCreateProposalGroup(
         case ProposalType.TechCommitteeProposal:
             condition.techCommitteeProposalIndex = index as number
             break
+        case ProposalType.ReferendumV2:
+            condition.referendumV2Index = index as number
+            break
         default:
             throw new Error(`Unknown proposal type ${type}`)
     }
@@ -223,6 +272,9 @@ async function getOrCreateProposalGroup(
                 break
             case ProposalType.TechCommitteeProposal:
                 link.techCommitteeProposalIndex = parentId as number
+                break
+            case ProposalType.ReferendumV2:
+                link.referendumV2Index = parentId as number
                 break
             default:
                 throw new Error(`Unknown proposal type ${type}`)
@@ -253,6 +305,9 @@ async function getOrCreateProposalGroup(
             case ProposalType.TechCommitteeProposal:
                 link.techCommitteeProposalIndex = index as number
                 break
+            case ProposalType.ReferendumV2:
+                link.referendumV2Index = index as number
+                break
             default:
                 throw new Error(`Unknown proposal type ${type}`)
         }
@@ -274,6 +329,9 @@ async function getOrCreateProposalGroup(
                 break
             case ProposalType.TechCommitteeProposal:
                 link.techCommitteeProposalIndex = parentId as number
+                break
+            case ProposalType.ReferendumV2:
+                link.referendumV2Index = parentId as number
                 break
             default:
                 throw new Error(`Unknown proposal type ${type}`)
@@ -302,14 +360,15 @@ async function getPreimageId(store: Store) {
     return count.toString().padStart(8, '0')
 }
 
-async function getPreimageIdV2(store: Store) {
-    const count = await store.count(PreimageV2)
+// async function getPreimageIdV2(store: Store) {
+//     const count = await store.count(PreimageV2)
 
-    return count.toString().padStart(8, '0')
-}
+//     return count.toString().padStart(8, '0')
+// }
 
 export async function createDemocracyProposal(
-    ctx: EventHandlerContext,
+    ctx: ProcessorContext<Store>,
+    header: any,
     data: DemocracyProposalData
 ): Promise<Proposal> {
     const { index, hash, proposer, deposit, status } = data
@@ -337,27 +396,30 @@ export async function createDemocracyProposal(
         deposit,
         status,
         preimage,
-        createdAtBlock: ctx.block.height,
-        createdAt: new Date(ctx.block.timestamp),
-        updatedAt: new Date(ctx.block.timestamp),
+        createdAtBlock: header.height,
+        createdAt: new Date(header.timestamp),
+        updatedAt: new Date(header.timestamp),
     })
 
     await ctx.store.insert(proposal)
 
     await ctx.store.insert(
         new StatusHistory({
-            id: ctx.event.id,
+            id: randomUUID(),
             block: proposal.createdAtBlock,
             timestamp: proposal.createdAt,
             status: proposal.status,
+            extrinsicIndex: data.extrinsicIndex,
             proposal,
         })
     )
 
+    await sendNotification(ctx, proposal, 'newProposalCreated')
+
     return proposal
 }
 
-export async function createReferendum(ctx: EventHandlerContext, data: ReferendumData): Promise<Proposal> {
+export async function createReferendum( ctx: ProcessorContext<Store>, header: any, data: ReferendumData): Promise<Proposal> {
     const { index, threshold, hash, status, end, delay } = data
 
     const type = ProposalType.Referendum
@@ -366,15 +428,8 @@ export async function createReferendum(ctx: EventHandlerContext, data: Referendu
 
     const id = await getProposalId(ctx.store, type)
 
-    const preimage = await ctx.store.get(Preimage, {
-        where: {
-            hash: hash,
-            status: ProposalStatus.Noted,
-        },
-        order: {
-            createdAtBlock: 'DESC'
-        }
-    })
+    let preimage = null;
+    let proposer = null;
 
     if(hash){
         const associatedProposal = await ctx.store.get(Proposal, {
@@ -390,7 +445,7 @@ export async function createReferendum(ctx: EventHandlerContext, data: Referendu
             where: {
                 hash: hash,
                 status: ProposalStatus.Tabled,
-                updatedAtBlock: ctx.block.height,
+                updatedAtBlock: header.height,
                 type: ProposalType.DemocracyProposal,
             },
             order: {
@@ -410,16 +465,35 @@ export async function createReferendum(ctx: EventHandlerContext, data: Referendu
             group = await getOrCreateProposalGroup(ctx, associatedProposal.index, associatedProposal.type as ProposalType, index, type)
             associatedProposal.group = group
             await ctx.store.save(associatedProposal)
+            if(!preimage && associatedProposal.preimage){
+                preimage = associatedProposal.preimage
+                proposer = associatedProposal.proposer
+            }
 
         }
     }
 
+    if (!preimage) {
+        preimage = await ctx.store.get(Preimage, {
+            where: {
+                hash: hash,
+            },
+            order: {
+                createdAtBlock: 'DESC'
+            }
+        })
+    }
+
+    if(!proposer && preimage && preimage.proposer){
+        proposer = preimage.proposer
+    }
 
     const proposal = new Proposal({
         id,
         index,
         type,
         hash,
+        proposer,
         threshold: new ReferendumThreshold({
             type: threshold as ReferendumThresholdType,
         }),
@@ -428,28 +502,32 @@ export async function createReferendum(ctx: EventHandlerContext, data: Referendu
         end: end,
         delay: delay,
         group: group,
-        createdAtBlock: ctx.block.height,
-        createdAt: new Date(ctx.block.timestamp),
-        updatedAt: new Date(ctx.block.timestamp),
+        createdAtBlock: header.height,
+        createdAt: new Date(header.timestamp),
+        updatedAt: new Date(header.timestamp),
     })
 
     await ctx.store.insert(proposal)
 
     await ctx.store.insert(
         new StatusHistory({
-            id: ctx.event.id,
+            id: randomUUID(),
             block: proposal.createdAtBlock,
             timestamp: proposal.createdAt,
             status: proposal.status,
+            extrinsicIndex: data.extrinsicIndex,
             proposal,
         })
     )
+
+    await sendNotification(ctx, proposal, 'newProposalCreated')
 
     return proposal
 }
 
 export async function createCoucilMotion(
-    ctx: EventHandlerContext,
+    ctx: ProcessorContext<Store>,
+    header: any,
     data: CouncilMotionData,
     type: ProposalType.CouncilMotion | ProposalType.TechCommitteeProposal = ProposalType.CouncilMotion
 ): Promise<Proposal> {
@@ -563,34 +641,38 @@ export async function createCoucilMotion(
         proposalArgumentHash: hexHash,
         preimage,
         group: group,
-        createdAtBlock: ctx.block.height,
-        createdAt: new Date(ctx.block.timestamp),
-        updatedAt: new Date(ctx.block.timestamp),
+        createdAtBlock: header.height,
+        createdAt: new Date(header.timestamp),
+        updatedAt: new Date(header.timestamp),
     })
 
     await ctx.store.insert(proposal)
 
     await ctx.store.insert(
         new StatusHistory({
-            id: ctx.event.id,
+            id: randomUUID(),
             block: proposal.createdAtBlock,
             timestamp: proposal.createdAt,
             status: proposal.status,
+            extrinsicIndex: data.extrinsicIndex,
             proposal,
         })
     )
+
+    await sendNotification(ctx, proposal, 'newProposalCreated')
 
     return proposal
 }
 
 export async function createTechCommitteeMotion(
-    ctx: EventHandlerContext,
+    ctx: ProcessorContext<Store>,
+    header: any,
     data: TechCommitteeMotionData
 ): Promise<Proposal> {
-    return await createCoucilMotion(ctx, data, ProposalType.TechCommitteeProposal)
+    return await createCoucilMotion(ctx, header, data, ProposalType.TechCommitteeProposal)
 }
 
-export async function createTip(ctx: EventHandlerContext, data: TipData): Promise<Proposal> {
+export async function createTip( ctx: ProcessorContext<Store>, header: any, data: TipData): Promise<Proposal> {
     const { status, hash, proposer, payee, deposit, reason } = data
 
     const type = ProposalType.Tip
@@ -606,27 +688,30 @@ export async function createTip(ctx: EventHandlerContext, data: TipData): Promis
         deposit,
         status,
         description: reason,
-        createdAtBlock: ctx.block.height,
-        createdAt: new Date(ctx.block.timestamp),
-        updatedAt: new Date(ctx.block.timestamp),
+        createdAtBlock: header.height,
+        createdAt: new Date(header.timestamp),
+        updatedAt: new Date(header.timestamp),
     })
 
     await ctx.store.insert(proposal)
 
     await ctx.store.insert(
         new StatusHistory({
-            id: ctx.event.id,
+            id: randomUUID(),
             block: proposal.createdAtBlock,
             timestamp: proposal.createdAt,
             status: proposal.status,
+            extrinsicIndex: data.extrinsicIndex,
             proposal,
         })
     )
 
+    await sendNotification(ctx, proposal, 'newProposalCreated')
+
     return proposal
 }
 
-export async function createBounty(ctx: EventHandlerContext, data: BountyData): Promise<Proposal> {
+export async function createBounty( ctx: ProcessorContext<Store>, header: any, data: BountyData): Promise<Proposal> {
     const { status, index, proposer, deposit, reward, curatorDeposit, description, fee } = data
 
     const type = ProposalType.Bounty
@@ -646,27 +731,30 @@ export async function createBounty(ctx: EventHandlerContext, data: BountyData): 
         description,
         status,
         fee,
-        createdAtBlock: ctx.block.height,
-        createdAt: new Date(ctx.block.timestamp),
-        updatedAt: new Date(ctx.block.timestamp),
+        createdAtBlock: header.height,
+        createdAt: new Date(header.timestamp),
+        updatedAt: new Date(header.timestamp),
     })
 
     await ctx.store.insert(proposal)
 
     await ctx.store.insert(
         new StatusHistory({
-            id: ctx.event.id,
+            id: randomUUID(),
             block: proposal.createdAtBlock,
             timestamp: proposal.createdAt,
             status: proposal.status,
+            extrinsicIndex: data.extrinsicIndex,
             proposal,
         })
     )
 
+    await sendNotification(ctx, proposal, 'newProposalCreated')
+
     return proposal
 }
 
-export async function createChildBounty(ctx: EventHandlerContext, data: ChildBountyData): Promise<Proposal> {
+export async function createChildBounty( ctx: ProcessorContext<Store>, header: any, data: ChildBountyData): Promise<Proposal> {
     const { status, index, parentBountyIndex, curatorDeposit, reward, fee, description } = data
 
     const type = ProposalType.ChildBounty
@@ -685,34 +773,63 @@ export async function createChildBounty(ctx: EventHandlerContext, data: ChildBou
         fee,
         parentBountyIndex,
         curatorDeposit,
-        createdAtBlock: ctx.block.height,
-        createdAt: new Date(ctx.block.timestamp),
-        updatedAt: new Date(ctx.block.timestamp),
+        createdAtBlock: header.height,
+        createdAt: new Date(header.timestamp),
+        updatedAt: new Date(header.timestamp),
     })
 
     await ctx.store.insert(proposal)
 
     await ctx.store.insert(
         new StatusHistory({
-            id: ctx.event.id,
+            id: randomUUID(),
             block: proposal.createdAtBlock,
             timestamp: proposal.createdAt,
             status: proposal.status,
+            extrinsicIndex: data.extrinsicIndex,
             proposal,
         })
     )
 
+    await sendNotification(ctx, proposal, 'newProposalCreated')
+
     return proposal
 }
 
-export async function createTreasury(ctx: EventHandlerContext, data: TreasuryData): Promise<Proposal> {
+export async function createTreasury( ctx: ProcessorContext<Store>, header: any, data: TreasuryData): Promise<Proposal> {
     const { status, index, proposer, deposit, reward, payee } = data
 
     const type = ProposalType.TreasuryProposal
 
     const id = await getProposalId(ctx.store, type)
 
-    // const group = await getOrCreateProposalGroup(ctx, index, ProposalType.TreasuryProposal)
+    let group = null;
+
+    if(status === ProposalStatus.Approved) {
+        const referendumV2 = await ctx.store.get(Proposal, {
+            where: {
+                type: ProposalType.ReferendumV2,
+                executeAtBlockNumber: header.height,
+                status: ProposalStatus.Confirmed,
+                proposer: proposer,
+            }
+        }) || await ctx.store.get(Proposal, {
+            where: {
+                type: ProposalType.ReferendumV2,
+                executeAtBlockNumber: header.height,
+                status: ProposalStatus.Executed,
+                proposer: proposer,
+            }
+        })
+        if(referendumV2 && referendumV2.trackNumber && [11, 30, 31, 32, 33, 34].includes(referendumV2.trackNumber) && referendumV2.index) {
+            group = await getOrCreateProposalGroup(ctx, index, ProposalType.TreasuryProposal, referendumV2.index, referendumV2.type)
+            if(group) {
+                referendumV2.group = group
+                await ctx.store.save(referendumV2)
+            }
+
+        }
+    }
 
     const proposal = new Proposal({
         id,
@@ -723,28 +840,32 @@ export async function createTreasury(ctx: EventHandlerContext, data: TreasuryDat
         reward,
         status,
         payee,
-        createdAtBlock: ctx.block.height,
-        // group: group,
-        createdAt: new Date(ctx.block.timestamp),
-        updatedAt: new Date(ctx.block.timestamp),
+        createdAtBlock: header.height,
+        group: group,
+        createdAt: new Date(header.timestamp),
+        updatedAt: new Date(header.timestamp),
     })
 
     await ctx.store.insert(proposal)
 
     await ctx.store.insert(
         new StatusHistory({
-            id: ctx.event.id,
+            id: randomUUID(),
             block: proposal.createdAtBlock,
             timestamp: proposal.createdAt,
             status: proposal.status,
+            extrinsicIndex: data.extrinsicIndex,
             proposal,
         })
     )
 
+    await sendNotification(ctx, proposal, 'newProposalCreated')
+
+
     return proposal
 }
 
-export async function createPreimage(ctx: EventHandlerContext, data: PreimageData): Promise<Preimage> {
+export async function createPreimage( ctx: ProcessorContext<Store>, header: any, data: PreimageData): Promise<Preimage> {
     const { status, hash, proposer, call, section, method } = data
 
     // const type = ProposalType.Preimage
@@ -761,9 +882,9 @@ export async function createPreimage(ctx: EventHandlerContext, data: PreimageDat
         proposedCall: call ? createProposedCall(call) : null,
         section: section,
         method: method,
-        createdAtBlock: ctx.block.height,
-        createdAt: new Date(ctx.block.timestamp),
-        updatedAt: new Date(ctx.block.timestamp),
+        createdAtBlock: header.height,
+        createdAt: new Date(header.timestamp),
+        updatedAt: new Date(header.timestamp),
     })
 
     await ctx.store.insert(preimage)
@@ -775,19 +896,26 @@ export async function createPreimage(ctx: EventHandlerContext, data: PreimageDat
         await ctx.store.save(proposal)
     }
 
+    await ctx.store.insert(
+        new StatusHistory({
+            id: randomUUID(),
+            block: header.height,
+            timestamp: new Date(header.timestamp),
+            status: status,
+            extrinsicIndex: data.extrinsicIndex,
+            preimage: preimage,
+        })
+    )
+
     return preimage
 }
 
-export async function createPreimageV2(ctx: EventHandlerContext, data: PreimageDataV2): Promise<PreimageV2> {
-    const { status, hash, proposer, call, section, method, deposit, length } = data
+export async function createPreimageV2( ctx: ProcessorContext<Store>, header: any, data: PreimageData): Promise<Preimage> {
+    const { status, hash, proposer, call, section, method, deposit, length, extrinsicIndex } = data
 
-    // const type = ProposalType.Preimage
+    const id = await getPreimageId(ctx.store)
 
-    const id = await getPreimageIdV2(ctx.store)
-
-    // const group = await getOrCreateProposalGroup(ctx, hash, ProposalType.Preimage)
-
-    const preimage = new PreimageV2({
+    const preimage = new Preimage({
         id,
         hash,
         proposer,
@@ -797,36 +925,46 @@ export async function createPreimageV2(ctx: EventHandlerContext, data: PreimageD
         length,
         section: section,
         method: method,
-        createdAtBlock: ctx.block.height,
-        createdAt: new Date(ctx.block.timestamp),
-        updatedAt: new Date(ctx.block.timestamp),
+        extrinsicIndex,
+        createdAtBlock: header.height,
+        createdAt: new Date(header.timestamp),
+        updatedAt: new Date(header.timestamp),
     })
 
     await ctx.store.insert(preimage)
 
+    await ctx.store.insert(
+        new StatusHistory({
+            id: randomUUID(),
+            block: header.height,
+            timestamp: new Date(header.timestamp),
+            status: status,
+            extrinsicIndex: data.extrinsicIndex,
+            preimage,
+        })
+    )
     return preimage
 }
 
-export async function createReferendumV2(ctx: EventHandlerContext, data: ReferendumDataV2, type: ProposalType): Promise<Proposal> {
+export async function createReferendumV2( ctx: ProcessorContext<Store>, header: any, data: ReferendumDataV2, type: ProposalType): Promise<Proposal> {
 
     const { status, index, proposer, hash, tally, origin, trackNumber, submissionDeposit, submittedAt, enactmentAfter, enactmentAt, deciding, decisionDeposit } = data
 
     const id = await getProposalId(ctx.store, type)
 
-    const preimage = await ctx.store.get(PreimageV2, {
+    const preimage = await ctx.store.get(Preimage, {
         where: {
             hash: data.hash,
-            status: ProposalStatus.Unrequested,
         },
         order: { createdAtBlock: 'DESC' },
     })
 
-    const subDeposit = {who: ss58codec.encode(submissionDeposit.who), amount: submissionDeposit.amount}
+    const subDeposit = {who: submissionDeposit.who, amount: submissionDeposit.amount}
 
     let decDeposit = undefined
 
     if (decisionDeposit) {
-        decDeposit = {who: ss58codec.encode(decisionDeposit.who), amount: decisionDeposit.amount}
+        decDeposit = {who: decisionDeposit.who, amount: decisionDeposit.amount}
     }
 
     const proposal = new Proposal({
@@ -835,7 +973,7 @@ export async function createReferendumV2(ctx: EventHandlerContext, data: Referen
         type,
         hash,
         trackNumber,
-        preimageV2: preimage,
+        preimage: preimage,
         status,
         proposer,
         tally: tally ? createTally(tally) : undefined,
@@ -846,23 +984,27 @@ export async function createReferendumV2(ctx: EventHandlerContext, data: Referen
         enactmentAtBlock: enactmentAt,
         deciding: deciding ? createDeciding(deciding) : undefined,
         decisionDeposit: decDeposit ? createDecisionDeposit(decDeposit) : undefined,
-        createdAtBlock: ctx.block.height,
-        createdAt: new Date(ctx.block.timestamp),
-        updatedAt: new Date(ctx.block.timestamp),
+        createdAtBlock: header.height,
+        createdAt: new Date(header.timestamp),
+        updatedAt: new Date(header.timestamp),
     })
 
     await ctx.store.insert(proposal)
 
     await ctx.store.insert(
         new StatusHistory({
-            id: ctx.event.id,
+            id: randomUUID(),
             block: proposal.createdAtBlock,
             timestamp: proposal.createdAt,
             status: proposal.status,
+            extrinsicIndex: data.extrinsicIndex,
             proposal,
         })
     )
 
+    await updateRedis(ctx, proposal)
+    await sendNotification(ctx, proposal, 'newProposalCreated')
+    
     return proposal
 }
 
@@ -884,4 +1026,121 @@ export function createDecisionDeposit(data: DecisionDepositData): DecisionDeposi
 
 export function createSubmissionDeposit(data: SubmissionDepositData): SubmissionDeposit {
     return new SubmissionDeposit(toJSON(data))
+}
+
+export async function sendNotification(ctx: ProcessorContext<Store>, proposal: Proposal, trigger: String) {
+    const { hash, type, index, proposer, curator, status, trackNumber } = proposal
+    let statusName = null
+    // if difference between proposal update time and current time > 10 mins return
+    if(proposal.updatedAt && (new Date().getTime() - proposal.updatedAt.getTime()) > 600000){
+        ctx.log.info(`Proposal ${index || hash} updated more than 10 mins ago, skipping notification`)
+        return
+    }
+
+    if([ProposalStatus.Started, 
+        ProposalStatus.Submitted, 
+        ProposalStatus.Added, 
+        ProposalStatus.Proposed, 
+        ProposalStatus.Opened,
+    ].includes(status)){
+        statusName = 'submitted'
+    }
+    else if([ProposalStatus.Executed,
+        ProposalStatus.Cancelled,
+        ProposalStatus.Killed,
+        ProposalStatus.Rejected,
+        ProposalStatus.Executed,
+        ProposalStatus.Closed,
+        ProposalStatus.Approved,
+        ProposalStatus.Disapproved,
+        ProposalStatus.Awarded,
+        ProposalStatus.Claimed,
+        ProposalStatus.NotPassed,
+        ProposalStatus.Passed,
+        ProposalStatus.Tabled,
+        ProposalStatus.Retracted,
+        ProposalStatus.Slashed,
+        ProposalStatus.TimedOut,
+    ].includes(status)){
+        statusName = 'closed'
+    }
+    else if([ProposalStatus.Deciding,
+        ProposalStatus.ConfirmStarted,
+        ProposalStatus.ConfirmAborted,
+    ].includes(status)){
+        statusName = 'voting'
+    }
+
+    const notification = {
+        trigger: trigger,
+        args : {
+            network: config.chain.name,
+            postType: type,
+            postId: type != ProposalType.Tip ? String(index) : hash,
+            proposerAddress: proposer || curator,
+            statusType: statusName,
+            track: String(trackNumber),
+            statusName: status,
+          }
+    }
+
+    if(!process.env.NOTIFICATION_API_KEY){
+        ctx.log.error(`Notification Api Key not found`)
+        return
+    }
+
+    ctx.log.info(`Sending notification with data ${JSON.stringify(notification)}`)
+
+    const response = await fetch(NOTIFICATION_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.NOTIFICATION_API_KEY || '',
+            'x-source': 'polkassembly'
+        },
+        body: JSON.stringify(notification),
+    })
+
+    ctx.log.info(`Notification response ${JSON.stringify(response)}`)
+
+    if (response.status !== 200) {
+        ctx.log.error(`Notification failed for proposal ${index || hash} with status ${response.status}`)
+        return
+    }
+}
+
+export async function updateRedis(ctx: ProcessorContext<Store>, proposal: Proposal){
+    const { hash, type, index, proposer, curator, status, trackNumber } = proposal
+
+    try{
+        if ([ProposalType.ReferendumV2, ProposalType.FellowshipReferendum].includes(type)) {
+            const redisData = {
+                network: config.chain.name,
+                govType: 'OpenGov',
+                postId: index,
+                track: trackNumber,
+                proposalType: type,
+            }
+            ctx.log.info(`Redis call with data ${JSON.stringify(redisData)}`)
+
+            const response = await fetch(REDIS_CF_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(redisData),
+            })
+
+            ctx.log.info(`Notification response ${JSON.stringify(response)}`)
+
+            if (response.status !== 200) {
+                ctx.log.error(`Redis call failed for proposal ${index || hash} with status ${response.status}`)
+                return
+            }
+        }
+    }
+    catch(e){
+        ctx.log.error(`Redis call failed for proposal ${index || hash} with error ${e}`)
+        return
+    }
 }

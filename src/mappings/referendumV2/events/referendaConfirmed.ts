@@ -1,17 +1,23 @@
 import { ProposalStatus, ProposalType } from '../../../model'
-import { EventHandlerContext } from '../../types/contexts'
 import { updateProposalStatus } from '../../utils/proposals'
 import { getConfirmedData } from './getters'
 import {createTally} from '../../utils/proposals'
+import { Store } from '@subsquid/typeorm-store'
+import { Block, ProcessorContext, Event } from '../../../processor'
 
-export async function handleConfirmed(ctx: EventHandlerContext) {
-    const { index, tally } = getConfirmedData(ctx)
+export async function handleConfirmed(ctx: ProcessorContext<Store>,
+    item: Event,
+    header: Block) {
+        
+    const { index, tally } = getConfirmedData(item)
 
     const tallyData = createTally(tally)
+    const extrinsicIndex = `${header.height}-${item.index}`
 
-    await updateProposalStatus(ctx, index, ProposalType.ReferendumV2, {
-        isEnded: true,
+
+    await updateProposalStatus(ctx, header, index, ProposalType.ReferendumV2, {
         status: ProposalStatus.Confirmed,
+        extrinsicIndex,
         data: {
             tally: tallyData
         }

@@ -1,25 +1,23 @@
+import { Store } from '@subsquid/typeorm-store'
 import { UnknownVersionError } from '../../common/errors'
-import { TreasuryProposalsStorage } from '../../types/storage'
-import { BlockContext } from '../../types/support'
+import { proposals } from '../../types/treasury/storage'
+import { ProcessorContext, Block } from '../../processor'
 
 interface TreasuryProposalStorageData {
-    proposer: Uint8Array
+    proposer: string
     value: bigint
-    beneficiary: Uint8Array
+    beneficiary: string
     bond: bigint
 }
 
-async function getStorageData(ctx: BlockContext, index: number): Promise<TreasuryProposalStorageData | undefined> {
-    const storage = new TreasuryProposalsStorage(ctx)
-    if (!storage.isExists) return undefined
-
-    if (storage.isV1020) {
-        return await storage.getAsV1020(index)
+async function getStorageData(ctx: ProcessorContext<Store>, index: number, block: Block): Promise<TreasuryProposalStorageData | undefined> {
+    if (proposals.v900.is(block)) {
+        return await proposals.v900.get(block, index)
     } else {
-        throw new UnknownVersionError(storage.constructor.name)
+        throw new UnknownVersionError('Treasury.Proposals')
     }
 }
 
-export async function getProposals(ctx: BlockContext, index: number) {
-    return await getStorageData(ctx, index)
+export async function getProposals(ctx: ProcessorContext<Store>, index: number, block: Block) {
+    return await getStorageData(ctx, index, block)
 }

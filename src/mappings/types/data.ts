@@ -20,11 +20,12 @@ export interface ProposedCallData {
     section: string
     method: string
     description: string
-    args?: Record<string, unknown>
+    args?: any
 }
 
 export interface BaseProposalData {
     status: ProposalStatus
+    extrinsicIndex?: string
 }
 export interface DemocracyProposalData extends BaseProposalData {
     index: number
@@ -90,22 +91,24 @@ export interface TreasuryData extends BaseProposalData {
 
 export interface PreimageData extends BaseProposalData {
     hash: string
-    proposer: string
-    deposit: bigint
-    call?: ProposedCallData
-    section?: string
-    method?: string
-}
-
-export interface PreimageDataV2 extends BaseProposalData {
-    hash: string
     proposer?: string
     deposit?: bigint
     call?: ProposedCallData
     section?: string
     method?: string
     length?: number
+    extrinsicIndex?: string
 }
+
+// export interface PreimageDataV2 extends BaseProposalData {
+//     hash: string
+//     proposer?: string
+//     deposit?: bigint
+//     call?: ProposedCallData
+//     section?: string
+//     method?: string
+//     length?: number
+// }
 
 export interface ReferendumDataV2 extends BaseProposalData {
     index: number
@@ -116,8 +119,8 @@ export interface ReferendumDataV2 extends BaseProposalData {
     enactmentAt?: number
     enactmentAfter?: number
     submittedAt: number
-    submissionDeposit: {who: Uint8Array, amount: bigint}
-    decisionDeposit: {who: Uint8Array, amount: bigint} | undefined
+    submissionDeposit: {who: string, amount: bigint}
+    decisionDeposit: {who: string, amount: bigint} | undefined
     deciding: {since: number, confirming: number | undefined} | undefined
     tally: {ayes: bigint | number, nays: bigint | number, support?: bigint | number, bareAyegs?: bigint | number}
 }
