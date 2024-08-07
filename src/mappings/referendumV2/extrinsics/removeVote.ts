@@ -2,7 +2,7 @@ import { Proposal, ProposalType } from '../../../model'
 import { Store } from '@subsquid/typeorm-store'
 // import { BatchContext, SubstrateBlock } from '@subsquid/substrate-processor'
 // import { CallItem } from '@subsquid/substrate-processor/lib/interfaces/dataSelection'
-import { getOriginAccountId } from '../../../common/tools'
+import { getExtrinsicAccountId } from '../../../common/tools'
 import { getRemoveVoteData } from './getters'
 import { MissingProposalRecordWarn } from '../../../common/errors'
 import { handleSubstratAndPrecompileRemoveVote } from './utils'
@@ -13,7 +13,7 @@ export async function handleRemoveVote(ctx: ProcessorContext<Store>,
     header: any) : Promise<void> {
     if (!(item as any).success) return
     const { index } = getRemoveVoteData(ctx, item)
-    const wallet = getOriginAccountId(item.origin)
+    const wallet = getExtrinsicAccountId(item.extrinsic)
     if(!wallet){
         return
     }

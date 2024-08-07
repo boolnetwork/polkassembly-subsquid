@@ -49,7 +49,7 @@ export function getOriginAccountId(origin: any) {
                         return toHex(decodeHex(origin.value.value))
                     }
                     catch (e) {
-                        console.log('Unexpected error continuing to next try block', JSON.stringify(e)); 
+                        console.log('Unexpected error continuing to next try block', JSON.stringify(e));
                     }
                     try {
                         return toHex(decodeHex(origin.value.value.value))
@@ -63,6 +63,18 @@ export function getOriginAccountId(origin: any) {
             }
         default:
             return undefined
+    }
+}
+
+export function getExtrinsicAccountId(extrinsic: any) {
+    if (!extrinsic) return undefined
+    if (!extrinsic.signature.address) return undefined
+    try {
+        return toHex(decodeHex(extrinsic.signature.address.value))
+    }
+    catch(e){
+        console.log('Unexpected error continuing to next try block', JSON.stringify(e));
+        return undefined
     }
 }
 

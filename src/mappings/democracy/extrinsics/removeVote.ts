@@ -1,5 +1,5 @@
 import { Store } from '@subsquid/typeorm-store'
-import { getOriginAccountId } from '../../../common/tools'
+import { getExtrinsicAccountId } from '../../../common/tools'
 import { getRemoveVoteData } from './getters'
 import { handleSubstratAndPrecompileRemoveVote } from './utils'
 import { Call, ProcessorContext } from '../../../processor'
@@ -10,7 +10,7 @@ export async function handleRemoveVote(ctx: ProcessorContext<Store>,
     if (!(item as any).success) return
     const { index } = getRemoveVoteData(ctx, item)
     const extrinsicIndex = `${header.height}-${item.extrinsicIndex}`
-    const wallet = getOriginAccountId(item.origin)
+    const wallet = getExtrinsicAccountId(item.extrinsic)
     if(!wallet){
         return
     }

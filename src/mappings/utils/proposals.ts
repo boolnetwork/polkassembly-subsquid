@@ -3,7 +3,7 @@ import { toJSON } from '@subsquid/util-internal-json'
 import { toHex } from '@subsquid/substrate-processor'
 import { MissingProposalRecordWarn } from '../../common/errors'
 import { ss58codec } from '../../common/tools'
-import { NOTIFICATION_URL, REDIS_CF_URL } from '../../consts/consts'
+import { REDIS_CF_URL } from '../../consts/consts'
 import { referendumV2EnactmentBlocks, fellowshipEnactmentBlocks } from '../../common/originEnactBlock'
 import fetch from 'node-fetch'
 
@@ -343,7 +343,7 @@ async function getOrCreateProposalGroup(
 
 async function getProposalId(store: Store, type: ProposalType) {
     const count = await store.count(Proposal, { where: { type } })
-    
+
     if(type == ProposalType.ReferendumV2){
         return `${Buffer.from(type.toLowerCase()).toString('hex')}-${count
             .toString()
@@ -1004,7 +1004,7 @@ export async function createReferendumV2( ctx: ProcessorContext<Store>, header: 
 
     await updateRedis(ctx, proposal)
     await sendNotification(ctx, proposal, 'newProposalCreated')
-    
+
     return proposal
 }
 
@@ -1037,10 +1037,10 @@ export async function sendNotification(ctx: ProcessorContext<Store>, proposal: P
         return
     }
 
-    if([ProposalStatus.Started, 
-        ProposalStatus.Submitted, 
-        ProposalStatus.Added, 
-        ProposalStatus.Proposed, 
+    if([ProposalStatus.Started,
+        ProposalStatus.Submitted,
+        ProposalStatus.Added,
+        ProposalStatus.Proposed,
         ProposalStatus.Opened,
     ].includes(status)){
         statusName = 'submitted'
@@ -1091,22 +1091,22 @@ export async function sendNotification(ctx: ProcessorContext<Store>, proposal: P
 
     ctx.log.info(`Sending notification with data ${JSON.stringify(notification)}`)
 
-    const response = await fetch(NOTIFICATION_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': process.env.NOTIFICATION_API_KEY || '',
-            'x-source': 'polkassembly'
-        },
-        body: JSON.stringify(notification),
-    })
-
-    ctx.log.info(`Notification response ${JSON.stringify(response)}`)
-
-    if (response.status !== 200) {
-        ctx.log.error(`Notification failed for proposal ${index || hash} with status ${response.status}`)
-        return
-    }
+    // const response = await fetch(NOTIFICATION_URL, {
+    //     method: 'POST',
+    //     headers: {
+    //         'Content-Type': 'application/json',
+    //         'x-api-key': process.env.NOTIFICATION_API_KEY || '',
+    //         'x-source': 'polkassembly'
+    //     },
+    //     body: JSON.stringify(notification),
+    // })
+    //
+    // ctx.log.info(`Notification response ${JSON.stringify(response)}`)
+    //
+    // if (response.status !== 200) {
+    //     ctx.log.error(`Notification failed for proposal ${index || hash} with status ${response.status}`)
+    //     return
+    // }
 }
 
 export async function updateRedis(ctx: ProcessorContext<Store>, proposal: Proposal){
@@ -1121,7 +1121,7 @@ export async function updateRedis(ctx: ProcessorContext<Store>, proposal: Propos
                 track: trackNumber,
                 proposalType: type,
             }
-            ctx.log.info(`Redis call with data ${JSON.stringify(redisData)}`)
+            ctx.log.info(`Redis call with data ${JSON.stringify(redisData)}, url:  ${REDIS_CF_URL}`)
 
             const response = await fetch(REDIS_CF_URL, {
                 method: 'POST',

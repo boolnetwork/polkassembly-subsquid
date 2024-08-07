@@ -1,4 +1,4 @@
-import { getOriginAccountId } from '../../../common/tools'
+import { getExtrinsicAccountId } from '../../../common/tools'
 import { getDelegateData } from './getters'
 import { Store } from '@subsquid/typeorm-store'
 import { handleSubtrateAndPrecompileDelegationVote } from './utils'
@@ -10,7 +10,7 @@ export async function handleDelegate(ctx: ProcessorContext<Store>,
     if (!(item as any).success) return
     const { to, lockPeriod, balance, track } = getDelegateData(ctx, item)
     const toWallet = to
-    const from = getOriginAccountId(item.origin)
+    const from = getExtrinsicAccountId(item.extrinsic)
     if(!from){
         return
     }
@@ -27,6 +27,6 @@ export async function handlePrecompileDelegate(ctx: ProcessorContext<Store>, ite
     if(!from){
         return
     }
-    
+
     await handleSubtrateAndPrecompileDelegationVote(ctx, header, Number(track), toWallet.toLowerCase(), Number(lockPeriod), balance || BigInt(0), from, extrinsicIndex)
 }

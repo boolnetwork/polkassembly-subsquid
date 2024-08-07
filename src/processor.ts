@@ -1,5 +1,5 @@
-
 import { lookupArchive } from '@subsquid/archive-registry'
+import {assertNotNull} from '@subsquid/util-internal'
 import { BlockHeader, DataHandlerContext, SubstrateBatchProcessor, SubstrateBatchProcessorFields, Event as _Event, Call as _Call, Extrinsic as _Extrinsic } from '@subsquid/substrate-processor'
 import { TypeormDatabase } from '@subsquid/typeorm-store'
 import * as modules from './mappings'
@@ -8,21 +8,21 @@ import { PRECOMPILES } from './consts/consts'
 //@ts-ignore ts(2589)
 const processor = new SubstrateBatchProcessor()
     .setDataSource({
-        chain: 'wss://wss.api.moonbeam.network',
-        archive: lookupArchive('moonbeam',  {type: 'Substrate', release: 'ArrowSquid' }),
+        chain: assertNotNull(process.env.RPC_BOOL_HTTP, 'No RPC endpoint supplied'),
     })
-    .setBlockRange({ from: 0})
+    .setBlockRange({from: 1})
     .setFields({event: {}, call: { origin: true, success: true, error: true }, extrinsic: { hash: true, fee: true, tip: true }, block: { timestamp: true } })
     .addCall({
         name: [ 'ConvictionVoting.vote', 'ConvictionVoting.delegate', 'ConvictionVoting.undelegate', 'ConvictionVoting.remove_vote', 'ConvictionVoting.remove_other_vote', 'Democracy.vote',
         'Democracy.remove_vote', 'Democracy.remove_other_vote', 'Democracy.delegate', 'Democracy.undelegate',
-    ]
+    ],
+        extrinsic: true,
     })
     .addEvent({
-        name: [ 'Referenda.Submitted', 'Referenda.Cancelled', 'Referenda.DecisionDepositPlaced', 'Referenda.Rejected', 'Referenda.TimedOut', 'Referenda.Approved', 'Referenda.DecisionStarted', 'Referenda.ConfirmStarted', 
-        'Referenda.ConfirmAborted', 'Referenda.Killed', 'Referenda.Confirmed', 'Preimage.Requested', 'Preimage.Noted', 'Preimage.Cleared', 'Preimage.Cleared', 'Referenda.ConfirmStarted', 
-        'Referenda.ConfirmAborted', 'Democracy.Proposed', 'Democracy.Tabled', 'Democracy.Started', 'Democracy.Passed', 'Democracy.NotPassed', 'Democracy.Cancelled', 'Democracy.Executed', 
-        'Democracy.PreimageNoted', 'Democracy.PreimageUsed', 'Democracy.PreimageInvalid', 'Democracy.PreimageMissing', 'Democracy.PreimageReaped', 'DemocracySeconded', 'Treasury.Proposed', 
+        name: [ 'Referenda.Submitted', 'Referenda.Cancelled', 'Referenda.DecisionDepositPlaced', 'Referenda.Rejected', 'Referenda.TimedOut', 'Referenda.Approved', 'Referenda.DecisionStarted', 'Referenda.ConfirmStarted',
+        'Referenda.ConfirmAborted', 'Referenda.Killed', 'Referenda.Confirmed', 'Preimage.Requested', 'Preimage.Noted', 'Preimage.Cleared', 'Preimage.Cleared', 'Referenda.ConfirmStarted',
+        'Referenda.ConfirmAborted', 'Democracy.Proposed', 'Democracy.Tabled', 'Democracy.Started', 'Democracy.Passed', 'Democracy.NotPassed', 'Democracy.Cancelled', 'Democracy.Executed',
+        'Democracy.PreimageNoted', 'Democracy.PreimageUsed', 'Democracy.PreimageInvalid', 'Democracy.PreimageMissing', 'Democracy.PreimageReaped', 'DemocracySeconded', 'Treasury.Proposed',
         'Treasury.Awarded', 'Treasury.Rejected', 'Treasury.SpendApproved', 'Scheduler.Dispatched'
     ],
         call: true,
@@ -103,10 +103,10 @@ const processor = new SubstrateBatchProcessor()
                 }
                 if (event.name == events.referenda.decisionDepositPlaced.name){
                     await modules.referendumV2.events.handleDecisionDepositPlaced(ctx, event, block.header)
-                }                
+                }
                 if (event.name == events.referenda.decisionStarted.name){
                     await modules.referendumV2.events.handleDecisionStarted(ctx, event, block.header)
-                }                
+                }
                 if (event.name == events.referenda.confirmStarted.name){
                     await modules.referendumV2.events.handleConfirmStarted(ctx, event, block.header)
                 }
@@ -174,7 +174,7 @@ const processor = new SubstrateBatchProcessor()
             //         }
             //     }
             // }
-        }  
+        }
     });
 
 

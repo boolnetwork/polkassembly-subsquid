@@ -3,7 +3,7 @@ import { MissingProposalRecordWarn, TooManyOpenVotes } from '../../../common/err
 import {
     VoteDecision,
 } from '../../../model'
-import { getOriginAccountId } from '../../../common/tools'
+import { getExtrinsicAccountId } from '../../../common/tools'
 import { getVoteData } from './getters'
 import { Store } from '@subsquid/typeorm-store'
 import { handleSubstrateAndPrecompileVotes } from './utils'
@@ -15,11 +15,8 @@ export async function handleConvictionVote(ctx: ProcessorContext<Store>,
     if (!(item as any).success) return
 
     const { index, vote } = getVoteData(ctx, item)
-
     const extrinsicIndex = `${header.height}-${item.extrinsicIndex}`
-
-    const from = getOriginAccountId(item.origin)
-
+    const from = getExtrinsicAccountId(item.extrinsic)
     if(!from){
         return
     }

@@ -4,12 +4,11 @@ import {lookupArchive} from "@subsquid/archive-registry"
 
 const config: any = {
     chain: {
-        name: 'moonbeam',
+        name: 'bool_beta_testnet',
         prefix: 42,
     },
     dataSource: {
-        archive: lookupArchive('moonbeam', {type: 'Substrate', release: 'ArrowSquid' }),
-        chain: 'wss://wss.api.moonbeam.network',
+        chain: 'ws://127.0.0.1:9944',
     },
     typesBundle: 'moonbeam',
     batchSize: 500,

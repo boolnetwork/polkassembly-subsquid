@@ -1,7 +1,7 @@
 import {
     VoteDecision,
 } from '../../../model'
-import { getOriginAccountId } from '../../../common/tools'
+import {getExtrinsicAccountId } from '../../../common/tools'
 import { getVoteData } from './getters'
 import { Store } from '@subsquid/typeorm-store'
 import { handleSubstrateAndPrecompileVotes } from './utils'
@@ -13,8 +13,7 @@ export async function handleDemocracyVote(ctx: ProcessorContext<Store>,
     if (!(item as any).success) return
     const extrinsicIndex = `${header.height}-${item.extrinsicIndex}`
     const { index, vote } = getVoteData(ctx, item)
-
-    const from = getOriginAccountId(item.origin)
+    const from = getExtrinsicAccountId(item.extrinsic)
 
     await handleSubstrateAndPrecompileVotes(ctx, header, index, vote, from, true, extrinsicIndex)
 
