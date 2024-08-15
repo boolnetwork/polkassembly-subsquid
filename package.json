@@ -9,7 +9,7 @@
     "db:migrate": "npx squid-typeorm-migration apply",
     "db:create-migration": "npx squid-typeorm-migration generate",
     "processor:start": "node lib/processor.js",
-    "query-node:start": "squid-graphql-server --subscriptions --max-response-size 10000 --dumb-cache in-memory --dumb-cache-ttl 1000 --dumb-cache-size 100 --dumb-cache-max-age 1000"
+    "query-node:start": "squid-graphql-server"
   },
   "dependencies": {
     "@ethersproject/abi": "^5.7.0",
