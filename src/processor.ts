@@ -10,7 +10,7 @@ const processor = new SubstrateBatchProcessor()
     .setDataSource({
         chain: assertNotNull(process.env.RPC_BOOL_HTTP, 'No RPC endpoint supplied'),
     })
-    .setBlockRange({from: 1})
+    .setBlockRange({from: process.env.BLOCK_RANGE_FROM ? parseInt(process.env.BLOCK_RANGE_FROM) : 10})
     .setFields({event: {}, call: { origin: true, success: true, error: true }, extrinsic: { hash: true, fee: true, tip: true }, block: { timestamp: true } })
     .addCall({
         name: [ 'ConvictionVoting.vote', 'ConvictionVoting.delegate', 'ConvictionVoting.undelegate', 'ConvictionVoting.remove_vote', 'ConvictionVoting.remove_other_vote', 'Democracy.vote',
